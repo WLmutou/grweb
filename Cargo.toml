@@ -1,11 +1,20 @@
 [package]
 name = "grweb"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["lijun <1489573464@qq.com>"]
+description = "A high-performance Rust Web framework based on gorust coroutine runtime"
+license = "MIT"
+repository = "https://github.com/WLmutou/grweb"
+homepage = "https://github.com/WLmjutou/grweb"
+documentation = "https://docs.rs/grweb"
+readme = "README.md"
+keywords = ["web", "framework", "async", "goroutine", "performance"]
+categories = ["web-programming", "asynchronous"]
 
 [dependencies]
-#gorust = "0.1.3"
-gorust = { path="../gorust" }
+gorust = "0.1.4"
+#gorust = { path="../gorust" }
 log = "0.4"
 env_logger = "0.10"
 serde = { version = "1.0", features = ["derive"] }
