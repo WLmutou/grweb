@@ -1,8 +1,7 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
-use std::time::Duration;
-use gorust::{go, runtime, yield_now};
+use gorust::{go, runtime};
 use log::{info, error};
 use crate::{Router, Response, Method};
 
@@ -29,7 +28,6 @@ impl Server {
     #[runtime]
     pub fn run(self) -> std::io::Result<()> {
         let listener = TcpListener::bind(&self.addr)?;
-        listener.set_nonblocking(true)?;
 
         info!("Server listening on {}", self.addr);
 
@@ -43,9 +41,6 @@ impl Server {
                         handle_connection(stream, &router);
                     });
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_micros(100));
-                }
                 Err(e) => {
                     error!("Connection failed: {}", e);
                 }
@@ -57,11 +52,9 @@ impl Server {
 }
 
 fn handle_connection(mut stream: TcpStream, router: &Router) {
-    let _ = stream.set_nonblocking(true);
     let _ = stream.set_nodelay(true);
 
     let mut buffer = [0u8; 8192];
-    let mut wait_us: u64 = 10;
 
     loop {
         match stream.read(&mut buffer) {
@@ -79,11 +72,6 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
                     let _ = stream.flush();
                 }
                 return;
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_micros(wait_us));
-                wait_us = (wait_us * 2).min(500);
-                yield_now();
             }
             Err(_) => return,
         }
