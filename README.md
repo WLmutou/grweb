@@ -67,7 +67,7 @@ fn main() {
 RUST_LOG=info cargo run --release
 ```
 
-访问 `http://127.0.0.1:8080/hello/grweb` 看到 `Hello, grweb!`
+访问 `http://127.0.0.1:9030/hello/grweb` 看到 `Hello, grweb!`
 
 ---
 
@@ -78,7 +78,7 @@ RUST_LOG=info cargo run --release
 ```toml
 [server]
 host = "127.0.0.1"       # 监听地址（默认 127.0.0.1）
-port = 8080              # 监听端口（默认 8080）
+port = 9030              # 监听端口（默认 9030）
 worker_pool_size = 4     # 工作线程数（默认 CPU 核心数）
 read_buffer_size = 8192  # 读缓冲区字节数（默认 8192）
 tcp_nodelay = true       # TCP_NODELAY（默认 true）

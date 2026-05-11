@@ -49,7 +49,7 @@ impl Response {
         Self {
             status,
             headers: vec![
-                ("Content-Type".to_string(), "text/plain".to_string()),
+                ("Content-Type".to_string(), "text/plain;charset=utf-8".to_string()),
             ],
             body: body.into(),
         }

@@ -13,8 +13,8 @@ keywords = ["web", "framework", "async", "goroutine", "performance"]
 categories = ["web-programming", "asynchronous"]
 
 [dependencies]
-gorust = "0.1.4"
-#gorust = { path="../gorust" }
+#gorust = "0.1.4"
+gorust = { path="../gorust" }
 log = "0.4"
 env_logger = "0.10"
 serde = { version = "1.0", features = ["derive"] }

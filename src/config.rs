@@ -107,7 +107,7 @@ fn default_host() -> String {
 }
 
 fn default_port() -> u16 {
-    8080
+    9030
 }
 
 fn default_worker_pool_size() -> usize {
