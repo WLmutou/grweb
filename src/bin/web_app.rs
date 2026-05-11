@@ -313,6 +313,8 @@ fn main() {
     router.get("/hello", handle_hello);
     router.get("/headers", headers_handler);
 
+    router.serve_static("/static", &config.server.static_dir);
+
     // print routes info
     go(grweb_print);
     // run server

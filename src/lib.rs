@@ -3,6 +3,7 @@ pub mod middleware;
 pub mod context;
 pub mod server;
 pub mod config;
+pub mod static_files;
 
 pub use router::Router;
 pub use middleware::{Middleware, MiddlewareChain};

@@ -26,6 +26,8 @@ pub struct ServerConfig {
     pub tcp_nodelay: bool,
     #[serde(default = "default_keep_alive_timeout")]
     pub keep_alive_timeout: u64,
+    #[serde(default = "default_static_dir")]
+    pub static_dir: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +65,7 @@ impl Default for ServerConfig {
             read_buffer_size: default_read_buffer_size(),
             tcp_nodelay: default_tcp_nodelay(),
             keep_alive_timeout: default_keep_alive_timeout(),
+            static_dir: default_static_dir(),
         }
     }
 }
@@ -127,6 +130,10 @@ fn default_tcp_nodelay() -> bool {
 
 fn default_keep_alive_timeout() -> u64 {
     5
+}
+
+fn default_static_dir() -> String {
+    "public".to_string()
 }
 
 fn default_log_level() -> String {

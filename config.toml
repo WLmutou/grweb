@@ -12,6 +12,8 @@ port = 9030
 # read_buffer_size = 8192
 # 是否启用 TCP_NODELAY
 # tcp_nodelay = true
+# 静态文件目录
+static_dir = "target/public"
 
 [logging]
 # 日志级别: trace, debug, info, warn, error

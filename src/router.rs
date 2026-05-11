@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use crate::{Method, Context, Response, Middleware, MiddlewareChain};
+use crate::static_files;
 use log::debug;
 
 pub type Handler = Arc<dyn Fn(Context) -> Response + Send + Sync>;
@@ -102,6 +103,7 @@ impl RouterNode {
 pub struct Router {
     root: RouterNode,
     global_middlewares: Arc<Vec<Arc<dyn Middleware>>>,
+    static_dirs: Vec<(String, String)>,
 }
 
 impl Router {
@@ -109,6 +111,7 @@ impl Router {
         Self {
             root: RouterNode::new(),
             global_middlewares: Arc::new(Vec::new()),
+            static_dirs: Vec::new(),
         }
     }
     
@@ -156,8 +159,19 @@ impl Router {
     {
         self.add_route(Method::DELETE, path, move |ctx| handler(ctx).into());
     }
-    
+
+    pub fn serve_static(&mut self, url_prefix: &str, dir_path: &str) {
+        let prefix = url_prefix.trim_end_matches('/').to_string();
+        self.static_dirs.push((prefix, dir_path.to_string()));
+    }
+
     pub fn handle_request(&self, method: Method, path: String, req_data: Vec<u8>, headers: HashMap<String, String>) -> Response {
+        for (prefix, dir_path) in &self.static_dirs {
+            if path.starts_with(prefix) && (path.len() == prefix.len() || path.as_bytes()[prefix.len()] == b'/') {
+                return static_files::serve_file(dir_path, &path[prefix.len()..]);
+            }
+        }
+
         if let Some((handler, params)) = self.root.find(&method, &path) {
             let ctx = Context::new(method, path, params, headers, req_data);
             MiddlewareChain::process(&self.global_middlewares, &handler, ctx)
