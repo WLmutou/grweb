@@ -20,6 +20,39 @@ fn headers_handler(ctx: Context) -> Response {
     Response::html(body)
 }
 
+fn form_handler(ctx: Context) -> Response {
+    let values = ctx.form_values();
+    let mut body = String::from("<h1>Form Data</h1><ul>");
+    for (k, v) in &values {
+        body.push_str(&format!("<li><b>{}</b>: {}</li>", k, v));
+    }
+    body.push_str("</ul>");
+    Response::html(body)
+}
+
+fn form_page_handler(_ctx: Context) -> Response {
+    let html = r#"<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Form Test</title></head>
+<body>
+<h1>Form Test</h1>
+<h2>URL-Encoded Form</h2>
+<form action="/form" method="post">
+    <input name="username" placeholder="Username"><br>
+    <input name="email" placeholder="Email"><br>
+    <button type="submit">Submit URL-Encoded</button>
+</form>
+<h2>Multipart Form</h2>
+<form action="/form" method="post" enctype="multipart/form-data">
+    <input name="name" placeholder="Name"><br>
+    <input name="message" placeholder="Message"><br>
+    <button type="submit">Submit Multipart</button>
+</form>
+</body>
+</html>"#;
+    Response::html(html)
+}
+
 fn create_user_handler(ctx: Context) -> Response {
     let body_str = ctx.body_string();
     let response = json!({
@@ -65,6 +98,8 @@ fn handle_home(_ctx: Context) -> Response{
                 <li><a href="/json">/json</a> - JSON response</li>
                 <li><a href="/about">/about</a> - About page</li>
                 <li><a href="/status">/status</a> - Server status</li>
+                <li><a href="/form">/form</a> - Form test</li>
+                <li><a href="/headers">/headers</a> - Request headers test</li>
                 <li><a href="/user/123">/user/123</a> - Dynamic user (123)</li>
                 <li><a href="/user/alice">/user/alice</a> - Dynamic user (alice)</li>
                 <li><a href="/post/2024/01/hello-world">/post/2024/01/hello-world</a> - Dynamic post</li>
@@ -264,6 +299,9 @@ fn grweb_print() {
     println!("   │   GET  /json          - JSON response                   │");
     println!("   │   GET  /about         - About page                      │");
     println!("   │   GET  /status        - Server status                   │");
+    println!("   │   GET  /form          - Form page                        │");
+    println!("   │   GET  /headers       - Headers page                     │");
+    println!("   │   GET  /static/*      - Static file server             │");
     println!("   │                                                        │");
     println!("   │ Dynamic Routes:                                         │");
     println!("   │   GET  /user/:id      - User profile (dynamic ID)       │");
@@ -312,6 +350,8 @@ fn main() {
     router.get("/post/:year/:month/:slug", handle_post);
     router.get("/hello", handle_hello);
     router.get("/headers", headers_handler);
+    router.get("/form", form_page_handler);
+    router.post("/form", form_handler);
 
     router.serve_static("/static", &config.server.static_dir);
 
