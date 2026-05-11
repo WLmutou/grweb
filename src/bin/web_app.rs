@@ -2,6 +2,11 @@ use grweb::{Server, Router, Context, Response, middleware::{LoggerMiddleware, Re
 use serde_json::json;
 
 fn main() {
+
+    unsafe {
+        std::env::set_var("RUST_LOG", "error");
+    };
+
     env_logger::init();
     
     let mut router = Router::new();
