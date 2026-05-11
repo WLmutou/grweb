@@ -1,6 +1,8 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use gorust::{go, runtime};
 use log::{info, error};
 use crate::{Router, Response, Method, ServerConfig};
@@ -25,12 +27,31 @@ impl Server {
 
         info!("Server listening on {}", addr);
 
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown_flag = shutdown.clone();
+        let shutdown_addr = addr.clone();
+
+        go(move || {
+            while gorust::scheduler::Scheduler::is_running() {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            shutdown_flag.store(true, Ordering::SeqCst);
+            let _ = TcpStream::connect(&shutdown_addr);
+        });
+
         let router = self.router.clone();
         let config = Arc::new(self.config);
 
         for stream in listener.incoming() {
+            if shutdown.load(Ordering::SeqCst) {
+                info!("Server stopped");
+                break;
+            }
             match stream {
                 Ok(stream) => {
+                    if shutdown.load(Ordering::SeqCst) {
+                        break;
+                    }
                     let router = router.clone();
                     let config = config.clone();
                     go(move || {
@@ -38,6 +59,9 @@ impl Server {
                     });
                 }
                 Err(e) => {
+                    if shutdown.load(Ordering::SeqCst) {
+                        break;
+                    }
                     error!("Connection failed: {}", e);
                 }
             }
