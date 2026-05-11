@@ -1,6 +1,6 @@
 
 use gorust::go;
-use grweb::{Server, Router, Context, Response, AppConfig, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
+use grweb::{Server, Router, Context, Response, AppConfig, WebSocket, Message, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
 use serde_json::json;
 
 
@@ -51,6 +51,30 @@ fn form_page_handler(_ctx: Context) -> Response {
 </body>
 </html>"#;
     Response::html(html)
+}
+
+fn ws_handler(mut ws: WebSocket) {
+    let welcome = r#"{"type":"welcome","message":"Connected to WebSocket server"}"#;
+    ws.send_text(welcome);
+
+    loop {
+        match ws.read_message() {
+            Some(Message::Text(text)) => {
+                let reply = format!(r#"{{"type":"echo","data":"{}"}}"#, text);
+                ws.send_text(&reply);
+            }
+            Some(Message::Binary(data)) => {
+                ws.send_binary(&data);
+            }
+            Some(Message::Ping(data)) => {
+                ws.send_pong(&data);
+            }
+            Some(Message::Close(_)) => {
+                break;
+            }
+            _ => break,
+        }
+    }
 }
 
 fn create_user_handler(ctx: Context) -> Response {
@@ -352,6 +376,8 @@ fn main() {
     router.get("/headers", headers_handler);
     router.get("/form", form_page_handler);
     router.post("/form", form_handler);
+
+    router.websocket("/ws", ws_handler);
 
     router.serve_static("/static", &config.server.static_dir);
 

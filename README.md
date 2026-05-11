@@ -77,14 +77,16 @@ RUST_LOG=info cargo run --release
 
 ```toml
 [server]
-host = "127.0.0.1"       # 监听地址（默认 127.0.0.1）
-port = 9030              # 监听端口（默认 9030）
-worker_pool_size = 4     # 工作线程数（默认 CPU 核心数）
-read_buffer_size = 8192  # 读缓冲区字节数（默认 8192）
-tcp_nodelay = true       # TCP_NODELAY（默认 true）
+host = "127.0.0.1"          # 监听地址（默认 127.0.0.1）
+port = 9030                 # 监听端口（默认 9030）
+worker_pool_size = 4        # 工作线程数（默认 CPU 核心数）
+read_buffer_size = 8192     # 读缓冲区字节数（默认 8192）
+tcp_nodelay = true          # TCP_NODELAY（默认 true）
+keep_alive_timeout = 5      # Keep-Alive 超时秒数（默认 5）
+static_dir = "public"       # 静态文件目录（默认 public）
 
 [logging]
-level = "error"          # trace | debug | info | warn | error（默认 info）
+level = "error"             # trace | debug | info | warn | error（默认 info）
 
 [cors]
 allowed_origins = ["*"]
@@ -214,6 +216,7 @@ pub struct Context {
     pub method: Method,                    // HTTP 方法
     pub path: String,                      // 请求路径
     pub params: HashMap<String, String>,   // 路径参数
+    pub headers: HashMap<String, String>,  // 请求头
     pub body: Vec<u8>,                     // 请求体
 }
 
@@ -221,11 +224,20 @@ impl Context {
     // 获取路径参数
     pub fn param(&self, key: &str) -> Option<&String>;
 
+    // 获取请求头
+    pub fn header(&self, key: &str) -> Option<&String>;
+
     // 请求体转字符串
     pub fn body_string(&self) -> String;
 
     // 请求体转 JSON（需 serde::Deserialize）
     pub fn body_json<T: DeserializeOwned>(&self) -> Result<T, serde_json::Error>;
+
+    // 获取单个表单字段（自动识别 urlencoded / multipart）
+    pub fn form_value(&self, key: &str) -> Option<String>;
+
+    // 获取所有表单字段
+    pub fn form_values(&self) -> HashMap<String, String>;
 }
 ```
 
@@ -256,6 +268,98 @@ resp.headers.push(("X-Custom".to_string(), "value".to_string()));
 
 ---
 
+## 静态文件服务
+
+通过 `serve_static` 将 URL 前缀映射到本地目录：
+
+```rust
+// 将 /static/* 映射到 ./public 目录
+router.serve_static("/static", "public");
+```
+
+访问 `http://127.0.0.1:9030/static/css/style.css` → `./public/css/style.css`
+
+**安全特性**：自动防止路径穿越攻击（`../` 等），不存在的文件返回 404。
+
+**MIME 类型**：自动根据文件扩展名设置 Content-Type，支持 HTML/CSS/JS/JSON/图片/字体/视频/音频等 20+ 种类型。
+
+---
+
+## 表单数据解析
+
+自动识别 `application/x-www-form-urlencoded` 和 `multipart/form-data`：
+
+```rust
+router.post("/login", |ctx: Context| {
+    let username = ctx.form_value("username").unwrap_or_default();
+    let password = ctx.form_value("password").unwrap_or_default();
+
+    // 或一次性获取所有字段
+    let all_fields = ctx.form_values();
+
+    Response::html(format!("Welcome, {}!", username))
+});
+```
+
+**URL 解码**：自动处理 `%XX` 和 `+`（空格）解码。
+
+**multipart 支持**：自动提取 boundary、解析 `Content-Disposition` 头中的 `name` 字段。
+
+---
+
+## WebSocket
+
+通过 `router.websocket()` 注册 WebSocket 路由，handler 接收 `WebSocket` 对象进行双向通信：
+
+```rust
+use grweb::{WebSocket, Message};
+
+router.websocket("/ws", |mut ws: WebSocket| {
+    ws.send_text(r#"{"type":"welcome"}"#);
+
+    loop {
+        match ws.read_message() {
+            Some(Message::Text(text)) => {
+                ws.send_text(&format!("Echo: {}", text));
+            }
+            Some(Message::Binary(data)) => {
+                ws.send_binary(&data);
+            }
+            Some(Message::Ping(data)) => {
+                ws.send_pong(&data);
+            }
+            Some(Message::Close(_)) => break,
+            _ => break,
+        }
+    }
+});
+```
+
+**WebSocket API**：
+
+```rust
+impl WebSocket {
+    pub fn read_message(&mut self) -> Option<Message>;
+    pub fn send_text(&mut self, text: &str) -> bool;
+    pub fn send_binary(&mut self, data: &[u8]) -> bool;
+    pub fn send_ping(&mut self, data: &[u8]) -> bool;
+    pub fn send_pong(&mut self, data: &[u8]) -> bool;
+    pub fn send_close(&mut self, code: u16, reason: &str) -> bool;
+}
+
+pub enum Message {
+    Text(String),
+    Binary(Vec<u8>),
+    Close(Option<(u16, String)>),
+    Ping(Vec<u8>),
+    Pong(Vec<u8>),
+}
+```
+
+**协议支持**：RFC 6455，支持分片消息重组、ping/pong 心跳、close 帧（含状态码）。
+
+---
+
 ## 性能
 
 wrk 压测（4 线程 / 100 连接 / 5 秒，AMD Ryzen）：
@@ -271,11 +375,11 @@ wrk 压测（4 线程 / 100 连接 / 5 秒，AMD Ryzen）：
 ---
 
 ## features
-[*] Keep-Alive 连接复用
-[*] 请求头解析（无法获取 Cookie/Authorization）
-[*] 静态文件服务
-- WebSocket 支持
-- 表单数据解析（multipart/urlencoded）
+[x] Keep-Alive 连接复用
+[x] 请求头解析（Cookie / Authorization）
+[x] 静态文件服务（MIME 自动检测 / 路径穿越防护）
+[x] WebSocket 支持（RFC 6455 / 分片重组 / ping-pong）
+[x] 表单数据解析（urlencoded / multipart）
 - HTTPS 支持
 - 连接池管理
 - 优雅降级和限流

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use gorust::{go, runtime};
 use log::{info, error};
-use crate::{Router, Response, Method, ServerConfig};
+use crate::{Router, Response, Method, ServerConfig, WebSocket};
 
 pub struct Server {
     config: ServerConfig,
@@ -94,6 +94,17 @@ fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConf
             Ok(0) => return,
             Ok(n) => {
                 if let Some((method, path, body, _header_end, req_keep_alive, headers)) = parse_http_request(&buffer[..n]) {
+                    if is_websocket_upgrade(&method, &headers) {
+                        if let Some(ws_handler) = router.find_ws(&path) {
+                            if let Some(key) = headers.get("Sec-WebSocket-Key") {
+                                if let Some(ws) = WebSocket::accept(stream, key) {
+                                    ws_handler(ws);
+                                }
+                                return;
+                            }
+                        }
+                    }
+
                     keep_alive = req_keep_alive;
 
                     let req_data = if body.is_empty() {
@@ -114,6 +125,24 @@ fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConf
             Err(_) => return,
         }
     }
+}
+
+fn is_websocket_upgrade(method: &Method, headers: &HashMap<String, String>) -> bool {
+    if *method != Method::GET {
+        return false;
+    }
+    let upgrade = headers.get("Upgrade")
+        .map(|v| v.to_lowercase() == "websocket")
+        .unwrap_or(false);
+    let connection = headers.get("Connection")
+        .map(|v| v.to_lowercase().contains("upgrade"))
+        .unwrap_or(false);
+    let has_key = headers.contains_key("Sec-WebSocket-Key");
+    let version = headers.get("Sec-WebSocket-Version")
+        .map(|v| v == "13")
+        .unwrap_or(false);
+
+    upgrade && connection && has_key && version
 }
 
 fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize, bool, HashMap<String, String>)> {

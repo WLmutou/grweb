@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::{Method, Context, Response, Middleware, MiddlewareChain};
+use crate::{Method, Context, Response, Middleware, MiddlewareChain, WebSocket};
 use crate::static_files;
 use log::debug;
 
 pub type Handler = Arc<dyn Fn(Context) -> Response + Send + Sync>;
+pub type WsHandler = Arc<dyn Fn(WebSocket) + Send + Sync>;
 
 /// 路由节点（支持路径参数）
 pub struct RouterNode {
@@ -104,6 +105,7 @@ pub struct Router {
     root: RouterNode,
     global_middlewares: Arc<Vec<Arc<dyn Middleware>>>,
     static_dirs: Vec<(String, String)>,
+    ws_routes: HashMap<String, WsHandler>,
 }
 
 impl Router {
@@ -112,6 +114,7 @@ impl Router {
             root: RouterNode::new(),
             global_middlewares: Arc::new(Vec::new()),
             static_dirs: Vec::new(),
+            ws_routes: HashMap::new(),
         }
     }
     
@@ -163,6 +166,17 @@ impl Router {
     pub fn serve_static(&mut self, url_prefix: &str, dir_path: &str) {
         let prefix = url_prefix.trim_end_matches('/').to_string();
         self.static_dirs.push((prefix, dir_path.to_string()));
+    }
+
+    pub fn websocket<F>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(WebSocket) + Send + Sync + 'static,
+    {
+        self.ws_routes.insert(path.to_string(), Arc::new(handler));
+    }
+
+    pub fn find_ws(&self, path: &str) -> Option<WsHandler> {
+        self.ws_routes.get(path).cloned()
     }
 
     pub fn handle_request(&self, method: Method, path: String, req_data: Vec<u8>, headers: HashMap<String, String>) -> Response {

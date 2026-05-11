@@ -4,12 +4,14 @@ pub mod context;
 pub mod server;
 pub mod config;
 pub mod static_files;
+pub mod websocket;
 
 pub use router::Router;
 pub use middleware::{Middleware, MiddlewareChain};
 pub use context::Context;
 pub use server::Server;
 pub use config::{AppConfig, ServerConfig, LoggingConfig, CorsConfig};
+pub use websocket::{WebSocket, Message};
 
 /// HTTP 方法枚举
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

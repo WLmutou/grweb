@@ -6,7 +6,7 @@ authors = ["lijun <1489573464@qq.com>"]
 description = "A high-performance Rust Web framework based on gorust coroutine runtime"
 license = "MIT"
 repository = "https://github.com/WLmutou/grweb"
-homepage = "https://github.com/WLmjutou/grweb"
+homepage = "https://github.com/WLmutou/grweb"
 documentation = "https://docs.rs/grweb"
 readme = "README.md"
 keywords = ["web", "framework", "async", "goroutine", "performance"]
@@ -23,6 +23,7 @@ num_cpus = "1.0"
 itoa = "1.0"
 memchr = "2"
 toml = "0.8"
+sha1 = "0.10"
 
 [dev-dependencies]
 # 用于示例
