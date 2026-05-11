@@ -24,6 +24,8 @@ pub struct ServerConfig {
     pub read_buffer_size: usize,
     #[serde(default = "default_tcp_nodelay")]
     pub tcp_nodelay: bool,
+    #[serde(default = "default_keep_alive_timeout")]
+    pub keep_alive_timeout: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,6 +62,7 @@ impl Default for ServerConfig {
             worker_pool_size: default_worker_pool_size(),
             read_buffer_size: default_read_buffer_size(),
             tcp_nodelay: default_tcp_nodelay(),
+            keep_alive_timeout: default_keep_alive_timeout(),
         }
     }
 }
@@ -120,6 +123,10 @@ fn default_read_buffer_size() -> usize {
 
 fn default_tcp_nodelay() -> bool {
     true
+}
+
+fn default_keep_alive_timeout() -> u64 {
+    5
 }
 
 fn default_log_level() -> String {

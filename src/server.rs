@@ -7,8 +7,6 @@ use gorust::{go, runtime};
 use log::{info, error};
 use crate::{Router, Response, Method, ServerConfig};
 
-const READ_TIMEOUT_SECS: u64 = 5;
-
 pub struct Server {
     config: ServerConfig,
     router: Arc<Router>,
@@ -83,33 +81,41 @@ fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConf
     if config.tcp_nodelay {
         let _ = stream.set_nodelay(true);
     }
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(READ_TIMEOUT_SECS)));
 
+    let keep_alive_timeout = Duration::from_secs(config.keep_alive_timeout);
     let mut buffer = vec![0u8; config.read_buffer_size];
+    let mut keep_alive = true;
 
-    loop {
+    while keep_alive {
+        let _ = stream.set_read_timeout(Some(keep_alive_timeout));
+
         match stream.read(&mut buffer) {
             Ok(0) => return,
             Ok(n) => {
-                if let Some((method, path, body, _header_end)) = parse_http_request(&buffer[..n]) {
+                if let Some((method, path, body, _header_end, req_keep_alive)) = parse_http_request(&buffer[..n]) {
+                    keep_alive = req_keep_alive;
+
                     let req_data = if body.is_empty() {
                         Vec::new()
                     } else {
                         body.to_vec()
                     };
                     let response = router.handle_request(method, path, req_data);
-                    let response_bytes = format_response_fast(&response);
-                    let _ = stream.write_all(&response_bytes);
+                    let response_bytes = format_response_fast(&response, keep_alive);
+                    if stream.write_all(&response_bytes).is_err() {
+                        return;
+                    }
                     let _ = stream.flush();
+                } else {
+                    return;
                 }
-                return;
             }
             Err(_) => return,
         }
     }
 }
 
-fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize)> {
+fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize, bool)> {
     let header_end = find_headers_end(buffer)?;
 
     let request_line_end = memchr::memchr(b'\n', buffer)?;
@@ -121,6 +127,7 @@ fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize)> {
 
     let method_bytes = &request_line[..first_space];
     let path_bytes = &request_line[first_space + 1..second_space];
+    let version_bytes = &request_line[second_space + 1..];
 
     let method = match method_bytes {
         b"GET" => Method::GET,
@@ -140,14 +147,58 @@ fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize)> {
         &[]
     };
 
-    Some((method, path, body, header_end))
+    let is_http11 = version_bytes == b"HTTP/1.1";
+    let headers_slice = &buffer[request_line_end + 1..header_end];
+    let has_connection_close = has_header_value(headers_slice, b"Connection", b"close");
+    let has_keep_alive = has_header_value(headers_slice, b"Connection", b"keep-alive");
+
+    let keep_alive = if is_http11 {
+        !has_connection_close
+    } else {
+        has_keep_alive
+    };
+
+    Some((method, path, body, header_end, keep_alive))
 }
 
 fn find_headers_end(buffer: &[u8]) -> Option<usize> {
     buffer.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4)
 }
 
-fn format_response_fast(response: &Response) -> Vec<u8> {
+fn has_header_value(headers: &[u8], name: &[u8], value: &[u8]) -> bool {
+    let mut pos = 0;
+    let name_lower = name.to_ascii_lowercase();
+    while pos < headers.len() {
+        let line_end = match memchr::memchr(b'\n', &headers[pos..]) {
+            Some(p) => pos + p,
+            None => headers.len(),
+        };
+        let line = &headers[pos..line_end];
+        let line = if line.ends_with(b"\r") {
+            &line[..line.len() - 1]
+        } else {
+            line
+        };
+
+        if let Some(colon) = memchr::memchr(b':', line) {
+            let header_name = &line[..colon];
+            if header_name.len() == name.len()
+                && header_name.to_ascii_lowercase() == name_lower
+            {
+                let header_value = &line[colon + 1..];
+                let header_value = header_value.trim_ascii();
+                if header_value.to_ascii_lowercase() == value.to_ascii_lowercase() {
+                    return true;
+                }
+            }
+        }
+
+        pos = line_end + 1;
+    }
+    false
+}
+
+fn format_response_fast(response: &Response, keep_alive: bool) -> Vec<u8> {
     let status_line: &[u8] = match response.status {
         200 => b"HTTP/1.1 200 OK\r\n",
         201 => b"HTTP/1.1 201 Created\r\n",
@@ -165,7 +216,11 @@ fn format_response_fast(response: &Response) -> Vec<u8> {
 
     let cl_header = b"Content-Length: ";
     let cl_suffix = b"\r\n";
-    let connection = b"Connection: close\r\n";
+    let connection: &[u8] = if keep_alive {
+        b"Connection: keep-alive\r\n"
+    } else {
+        b"Connection: close\r\n"
+    };
 
     let mut total_len = status_line.len()
         + cl_header.len() + content_length_str.len() + cl_suffix.len()
