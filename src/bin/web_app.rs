@@ -77,6 +77,21 @@ fn ws_handler(mut ws: WebSocket) {
     }
 }
 
+fn pool_stats_handler(ctx: Context) -> Response {
+    match ctx.pool_stats() {
+        Some(stats) => {
+            let json = json!({
+                "active_connections": stats.active_connections,
+                "total_connections": stats.total_connections,
+                "rejected_connections": stats.rejected_connections,
+                "max_connections": if stats.max_connections == 0 { "unlimited".to_string() } else { stats.max_connections.to_string() },
+            });
+            Response::json(json.to_string())
+        }
+        None => Response::json(r#"{"error":"pool not available"}"#),
+    }
+}
+
 fn create_user_handler(ctx: Context) -> Response {
     let body_str = ctx.body_string();
     let response = json!({
@@ -378,6 +393,8 @@ fn main() {
     router.post("/form", form_handler);
 
     router.websocket("/ws", ws_handler);
+
+    router.get("/pool/stats", pool_stats_handler);
 
     router.serve_static("/static", &config.server.static_dir);
 

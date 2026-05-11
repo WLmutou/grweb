@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use crate::Method;
+use crate::pool::{SharedPool, PoolStats};
 
 /// 请求上下文
 #[derive(Clone)]
@@ -9,6 +10,7 @@ pub struct Context {
     pub params: HashMap<String, String>,
     pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
+    pool: Option<SharedPool>,
 }
 
 impl Context {
@@ -25,7 +27,17 @@ impl Context {
             params,
             headers,
             body,
+            pool: None,
         }
+    }
+
+    pub fn with_pool(mut self, pool: SharedPool) -> Self {
+        self.pool = Some(pool);
+        self
+    }
+
+    pub fn pool_stats(&self) -> Option<PoolStats> {
+        self.pool.as_ref().map(|p| p.stats())
     }
 
     pub fn param(&self, key: &str) -> Option<&String> {

@@ -28,6 +28,10 @@ pub struct ServerConfig {
     pub keep_alive_timeout: u64,
     #[serde(default = "default_static_dir")]
     pub static_dir: String,
+    #[serde(default = "default_max_connections")]
+    pub max_connections: usize,
+    #[serde(default = "default_connection_timeout")]
+    pub connection_timeout: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +70,8 @@ impl Default for ServerConfig {
             tcp_nodelay: default_tcp_nodelay(),
             keep_alive_timeout: default_keep_alive_timeout(),
             static_dir: default_static_dir(),
+            max_connections: default_max_connections(),
+            connection_timeout: default_connection_timeout(),
         }
     }
 }
@@ -134,6 +140,14 @@ fn default_keep_alive_timeout() -> u64 {
 
 fn default_static_dir() -> String {
     "public".to_string()
+}
+
+fn default_max_connections() -> usize {
+    0
+}
+
+fn default_connection_timeout() -> u64 {
+    30
 }
 
 fn default_log_level() -> String {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::{Method, Context, Response, Middleware, MiddlewareChain, WebSocket};
+use crate::{Method, Context, Response, Middleware, MiddlewareChain, WebSocket, SharedPool, PoolStats};
 use crate::static_files;
 use log::debug;
 
@@ -106,6 +106,7 @@ pub struct Router {
     global_middlewares: Arc<Vec<Arc<dyn Middleware>>>,
     static_dirs: Vec<(String, String)>,
     ws_routes: HashMap<String, WsHandler>,
+    pool: Option<SharedPool>,
 }
 
 impl Router {
@@ -115,7 +116,16 @@ impl Router {
             global_middlewares: Arc::new(Vec::new()),
             static_dirs: Vec::new(),
             ws_routes: HashMap::new(),
+            pool: None,
         }
+    }
+
+    pub fn set_pool(&mut self, pool: SharedPool) {
+        self.pool = Some(pool);
+    }
+
+    pub fn pool_stats(&self) -> Option<PoolStats> {
+        self.pool.as_ref().map(|p| p.stats())
     }
     
     pub fn use_middleware<M: Middleware + 'static>(&mut self, middleware: M) {
@@ -187,7 +197,10 @@ impl Router {
         }
 
         if let Some((handler, params)) = self.root.find(&method, &path) {
-            let ctx = Context::new(method, path, params, headers, req_data);
+            let mut ctx = Context::new(method, path, params, headers, req_data);
+            if let Some(ref pool) = self.pool {
+                ctx = ctx.with_pool(pool.clone());
+            }
             MiddlewareChain::process(&self.global_middlewares, &handler, ctx)
         } else {
             Response::not_found()

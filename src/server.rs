@@ -6,19 +6,27 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use gorust::{go, runtime};
 use log::{info, error};
-use crate::{Router, Response, Method, ServerConfig, WebSocket};
+use crate::{Router, Response, Method, ServerConfig, WebSocket, ConnectionPool, SharedPool};
 
 pub struct Server {
     config: ServerConfig,
     router: Arc<Router>,
+    pool: SharedPool,
 }
 
 impl Server {
-    pub fn new(config: ServerConfig, router: Router) -> Self {
+    pub fn new(config: ServerConfig, mut router: Router) -> Self {
+        let pool = Arc::new(ConnectionPool::new(config.max_connections));
+        router.set_pool(pool.clone());
         Self {
             config,
             router: Arc::new(router),
+            pool,
         }
+    }
+
+    pub fn pool(&self) -> &SharedPool {
+        &self.pool
     }
 
     #[runtime]
@@ -48,6 +56,7 @@ impl Server {
 
         let router = self.router.clone();
         let config = Arc::new(self.config);
+        let pool = self.pool.clone();
 
         for stream in listener.incoming() {
             if shutdown.load(Ordering::SeqCst) {
@@ -59,10 +68,16 @@ impl Server {
                     if shutdown.load(Ordering::SeqCst) {
                         break;
                     }
+                    if !pool.try_acquire() {
+                        let _ = send_503_and_close(stream);
+                        continue;
+                    }
                     let router = router.clone();
                     let config = config.clone();
+                    let pool = pool.clone();
                     go(move || {
                         handle_connection(stream, &router, &config);
+                        pool.release();
                     });
                 }
                 Err(e) => {
@@ -76,6 +91,12 @@ impl Server {
 
         Ok(())
     }
+}
+
+fn send_503_and_close(mut stream: TcpStream) -> std::io::Result<()> {
+    let response = b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    stream.write_all(response)?;
+    stream.flush()
 }
 
 fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConfig) {
