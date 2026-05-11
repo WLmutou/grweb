@@ -381,7 +381,7 @@ wrk 压测（4 线程 / 100 连接 / 5 秒，AMD Ryzen）：
 [x] WebSocket 支持（RFC 6455 / 分片重组 / ping-pong）
 [x] 表单数据解析（urlencoded / multipart）
 - HTTPS 支持
-- 连接池管理
+[x] 连接池管理
 - 优雅降级和限流
 - 测试用例（未见 tests/ 目录）
 
