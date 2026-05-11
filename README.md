@@ -271,7 +271,7 @@ wrk 压测（4 线程 / 100 连接 / 5 秒，AMD Ryzen）：
 ---
 
 ## features
-- Keep-Alive 连接复用
+[*] Keep-Alive 连接复用
 - 请求头解析（无法获取 Cookie/Authorization）
 - 静态文件服务
 - WebSocket 支持

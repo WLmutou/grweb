@@ -157,9 +157,9 @@ impl Router {
         self.add_route(Method::DELETE, path, move |ctx| handler(ctx).into());
     }
     
-    pub fn handle_request(&self, method: Method, path: String, req_data: Vec<u8>) -> Response {
+    pub fn handle_request(&self, method: Method, path: String, req_data: Vec<u8>, headers: HashMap<String, String>) -> Response {
         if let Some((handler, params)) = self.root.find(&method, &path) {
-            let ctx = Context::new(method, path, params, req_data);
+            let ctx = Context::new(method, path, params, headers, req_data);
             MiddlewareChain::process(&self.global_middlewares, &handler, ctx)
         } else {
             Response::not_found()

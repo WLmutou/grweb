@@ -11,6 +11,15 @@ fn hello_handler(ctx: Context) -> Response {
     Response::html(format!("<h1>Hello, {}!</h1>", name))
 }
 
+fn headers_handler(ctx: Context) -> Response {
+    let mut body = String::from("<h1>Request Headers</h1><ul>");
+    for (k, v) in &ctx.headers {
+        body.push_str(&format!("<li><b>{}</b>: {}</li>", k, v));
+    }
+    body.push_str("</ul>");
+    Response::html(body)
+}
+
 fn create_user_handler(ctx: Context) -> Response {
     let body_str = ctx.body_string();
     let response = json!({
@@ -302,6 +311,7 @@ fn main() {
     router.get("/user/:id", handle_user);
     router.get("/post/:year/:month/:slug", handle_post);
     router.get("/hello", handle_hello);
+    router.get("/headers", headers_handler);
 
     // print routes info
     go(grweb_print);

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
@@ -92,7 +93,7 @@ fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConf
         match stream.read(&mut buffer) {
             Ok(0) => return,
             Ok(n) => {
-                if let Some((method, path, body, _header_end, req_keep_alive)) = parse_http_request(&buffer[..n]) {
+                if let Some((method, path, body, _header_end, req_keep_alive, headers)) = parse_http_request(&buffer[..n]) {
                     keep_alive = req_keep_alive;
 
                     let req_data = if body.is_empty() {
@@ -100,7 +101,7 @@ fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConf
                     } else {
                         body.to_vec()
                     };
-                    let response = router.handle_request(method, path, req_data);
+                    let response = router.handle_request(method, path, req_data, headers);
                     let response_bytes = format_response_fast(&response, keep_alive);
                     if stream.write_all(&response_bytes).is_err() {
                         return;
@@ -115,7 +116,7 @@ fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConf
     }
 }
 
-fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize, bool)> {
+fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize, bool, HashMap<String, String>)> {
     let header_end = find_headers_end(buffer)?;
 
     let request_line_end = memchr::memchr(b'\n', buffer)?;
@@ -158,11 +159,39 @@ fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize, bo
         has_keep_alive
     };
 
-    Some((method, path, body, header_end, keep_alive))
+    let headers = parse_headers(headers_slice);
+
+    Some((method, path, body, header_end, keep_alive, headers))
 }
 
 fn find_headers_end(buffer: &[u8]) -> Option<usize> {
     buffer.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4)
+}
+
+fn parse_headers(headers_slice: &[u8]) -> HashMap<String, String> {
+    let mut headers = HashMap::new();
+    let mut pos = 0;
+    while pos < headers_slice.len() {
+        let line_end = match memchr::memchr(b'\n', &headers_slice[pos..]) {
+            Some(p) => pos + p,
+            None => headers_slice.len(),
+        };
+        let line = &headers_slice[pos..line_end];
+        let line = if line.ends_with(b"\r") {
+            &line[..line.len() - 1]
+        } else {
+            line
+        };
+
+        if let Some(colon) = memchr::memchr(b':', line) {
+            let name = String::from_utf8_lossy(&line[..colon]).to_string();
+            let value = String::from_utf8_lossy(line[colon + 1..].trim_ascii()).to_string();
+            headers.insert(name, value);
+        }
+
+        pos = line_end + 1;
+    }
+    headers
 }
 
 fn has_header_value(headers: &[u8], name: &[u8], value: &[u8]) -> bool {
