@@ -7,6 +7,7 @@ fn main() {
     unsafe {
         std::env::set_var("RUST_LOG", &config.logging.level);
     }
+    
     env_logger::init();
 
     let mut router = Router::new();
