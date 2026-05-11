@@ -2,12 +2,13 @@ pub mod router;
 pub mod middleware;
 pub mod context;
 pub mod server;
+pub mod config;
 
-// 重新导出常用类型
 pub use router::Router;
 pub use middleware::{Middleware, MiddlewareChain};
 pub use context::Context;
 pub use server::Server;
+pub use config::{AppConfig, ServerConfig, LoggingConfig, CorsConfig};
 
 /// HTTP 方法枚举
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

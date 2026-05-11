@@ -3,42 +3,38 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use gorust::{go, runtime};
 use log::{info, error};
-use crate::{Router, Response, Method};
+use crate::{Router, Response, Method, ServerConfig};
 
 pub struct Server {
-    addr: String,
+    config: ServerConfig,
     router: Arc<Router>,
-    worker_pool_size: usize,
 }
 
 impl Server {
-    pub fn new(addr: &str, router: Router) -> Self {
+    pub fn new(config: ServerConfig, router: Router) -> Self {
         Self {
-            addr: addr.to_string(),
+            config,
             router: Arc::new(router),
-            worker_pool_size: num_cpus::get(),
         }
-    }
-
-    pub fn with_worker_pool(mut self, size: usize) -> Self {
-        self.worker_pool_size = size;
-        self
     }
 
     #[runtime]
     pub fn run(self) -> std::io::Result<()> {
-        let listener = TcpListener::bind(&self.addr)?;
+        let addr = self.config.addr();
+        let listener = TcpListener::bind(&addr)?;
 
-        info!("Server listening on {}", self.addr);
+        info!("Server listening on {}", addr);
 
         let router = self.router.clone();
+        let config = Arc::new(self.config);
 
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
                     let router = router.clone();
+                    let config = config.clone();
                     go(move || {
-                        handle_connection(stream, &router);
+                        handle_connection(stream, &router, &config);
                     });
                 }
                 Err(e) => {
@@ -51,10 +47,12 @@ impl Server {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, router: &Router) {
-    let _ = stream.set_nodelay(true);
+fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConfig) {
+    if config.tcp_nodelay {
+        let _ = stream.set_nodelay(true);
+    }
 
-    let mut buffer = [0u8; 8192];
+    let mut buffer = vec![0u8; config.read_buffer_size];
 
     loop {
         match stream.read(&mut buffer) {

@@ -1,34 +1,35 @@
-use grweb::{Server, Router, Context, Response, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
+use grweb::{Server, Router, Context, Response, AppConfig, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
 use serde_json::json;
 
 fn main() {
+    let config = AppConfig::load("config.toml").expect("Failed to load config");
 
     unsafe {
-        std::env::set_var("RUST_LOG", "error");
-    };
-
+        std::env::set_var("RUST_LOG", &config.logging.level);
+    }
     env_logger::init();
-    
+
     let mut router = Router::new();
-    
-    // 添加全局中间件
+
     router.use_middleware(LoggerMiddleware);
     router.use_middleware(RecoveryMiddleware);
-    router.use_middleware(CORSMiddleware::new(vec!["*".to_string()]));
-    
-    // 路由配置
+    router.use_middleware(CORSMiddleware::new(
+        config.cors.allowed_origins.clone(),
+        config.cors.allowed_methods.clone(),
+        config.cors.allowed_headers.clone(),
+    ));
+
     router.get("/", |_ctx: Context| {
         Response::html("<h1>Welcome to Gorust Web Framework!</h1>".to_string())
     });
-    
+
     router.get("/hello/:name", |ctx: Context| {
         let default_name = "World".to_string();
         let name = ctx.param("name").unwrap_or(&default_name);
         Response::html(format!("<h1>Hello, {}!</h1>", name))
     });
-    
+
     router.post("/api/user", |ctx: Context| {
-        // 处理 JSON 请求
         let body_str = ctx.body_string();
         let response = json!({
             "status": "success",
@@ -37,7 +38,7 @@ fn main() {
         });
         Response::json(response.to_string())
     });
-    
+
     router.get("/api/users", |_ctx: Context| {
         let users = json!([
             {"id": 1, "name": "Alice"},
@@ -45,19 +46,17 @@ fn main() {
         ]);
         Response::json(users.to_string())
     });
-    
+
     router.get("/slow", |_ctx: Context| {
-        // 演示 goroutine 特性：模拟慢请求
         use std::time::Duration;
         std::thread::sleep(Duration::from_secs(2));
         Response::html("<h1>Slow response completed!</h1>".to_string())
     });
-    
-    // 启动服务器
-    let server = Server::new("127.0.0.1:8080", router)
-        .with_worker_pool(4);  // 4个 worker goroutines
-    
-    println!("🚀 Server running at http://127.0.0.1:8080");
+
+    let addr = config.server.addr();
+    let server = Server::new(config.server, router);
+
+    println!("Server running at http://{}", addr);
     if let Err(e) = server.run() {
         eprintln!("Server error: {}", e);
     }

@@ -1,0 +1,26 @@
+# grweb 配置文件
+# 所有字段均为可选，未配置的字段将使用默认值
+
+[server]
+# 监听地址
+host = "127.0.0.1"
+# 监听端口
+port = 8080
+# 工作线程池大小（默认 = CPU 核心数）
+# worker_pool_size = 4
+# 请求读取缓冲区大小（字节）
+# read_buffer_size = 8192
+# 是否启用 TCP_NODELAY
+# tcp_nodelay = true
+
+[logging]
+# 日志级别: trace, debug, info, warn, error
+level = "error"
+
+[cors]
+# 允许的跨域来源
+allowed_origins = ["*"]
+# 允许的 HTTP 方法
+# allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+# 允许的请求头
+# allowed_headers = ["Content-Type"]

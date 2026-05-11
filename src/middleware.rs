@@ -78,11 +78,21 @@ impl Middleware for RecoveryMiddleware {
 
 pub struct CORSMiddleware {
     allowed_origins: Vec<String>,
+    allowed_methods: Vec<String>,
+    allowed_headers: Vec<String>,
 }
 
 impl CORSMiddleware {
-    pub fn new(allowed_origins: Vec<String>) -> Self {
-        Self { allowed_origins }
+    pub fn new(
+        allowed_origins: Vec<String>,
+        allowed_methods: Vec<String>,
+        allowed_headers: Vec<String>,
+    ) -> Self {
+        Self {
+            allowed_origins,
+            allowed_methods,
+            allowed_headers,
+        }
     }
 }
 
@@ -93,8 +103,8 @@ impl Middleware for CORSMiddleware {
         let origin = "*".to_string();
         if self.allowed_origins.contains(&origin) || self.allowed_origins.contains(&"*".to_string()) {
             response.headers.push(("Access-Control-Allow-Origin".to_string(), origin));
-            response.headers.push(("Access-Control-Allow-Methods".to_string(), "GET, POST, PUT, DELETE, OPTIONS".to_string()));
-            response.headers.push(("Access-Control-Allow-Headers".to_string(), "Content-Type".to_string()));
+            response.headers.push(("Access-Control-Allow-Methods".to_string(), self.allowed_methods.join(", ")));
+            response.headers.push(("Access-Control-Allow-Headers".to_string(), self.allowed_headers.join(", ")));
         }
 
         response

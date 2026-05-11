@@ -1,4 +1,4 @@
-use grweb::{Server, Router, Context, Response, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
+use grweb::{Server, Router, Context, Response, ServerConfig, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
 use serde_json::json;
 
 fn main() {
@@ -6,10 +6,13 @@ fn main() {
     
     let mut router = Router::new();
     
-    // 添加全局中间件
     router.use_middleware(LoggerMiddleware);
     router.use_middleware(RecoveryMiddleware);
-    router.use_middleware(CORSMiddleware::new(vec!["*".to_string()]));
+    router.use_middleware(CORSMiddleware::new(
+        vec!["*".to_string()],
+        vec!["GET".to_string(), "POST".to_string(), "PUT".to_string(), "DELETE".to_string(), "OPTIONS".to_string()],
+        vec!["Content-Type".to_string()],
+    ));
     
     // 路由配置
     router.get("/", |_ctx: Context| {
@@ -48,11 +51,11 @@ fn main() {
         Response::html("<h1>Slow response completed!</h1>".to_string())
     });
     
-    // 启动服务器
-    let server = Server::new("127.0.0.1:8080", router)
-        .with_worker_pool(4);  // 4个 worker goroutines
-    
-    println!("🚀 Server running at http://127.0.0.1:8080");
+    let config = ServerConfig::default();
+    let addr = config.addr();
+    let server = Server::new(config, router);
+
+    println!("Server running at http://{}", addr);
     if let Err(e) = server.run() {
         eprintln!("Server error: {}", e);
     }
