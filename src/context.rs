@@ -8,7 +8,6 @@ pub struct Context {
     pub path: String,
     pub params: HashMap<String, String>,
     pub body: Vec<u8>,
-    pub headers: HashMap<String, String>,
 }
 
 impl Context {
@@ -18,7 +17,6 @@ impl Context {
             path,
             params,
             body,
-            headers: HashMap::new(),
         }
     }
     

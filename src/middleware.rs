@@ -2,78 +2,70 @@ use std::sync::Arc;
 use crate::{Context, Response};
 use crate::router::Handler;
 
-pub type Next = Box<dyn FnOnce(Context) -> Response + Send>;
-
-/// 中间件 trait
 pub trait Middleware: Send + Sync {
-    fn call(&self, ctx: Context, next: Next) -> Response;
+    fn call(&self, ctx: Context, next: &dyn Fn(Context) -> Response) -> Response;
 }
 
-/// 中间件链
-pub struct MiddlewareChain {
-    middlewares: Vec<Arc<dyn Middleware>>,
-    final_handler: Handler,
-    index: usize,
-}
+pub struct MiddlewareChain;
 
 impl MiddlewareChain {
-    pub fn new(middlewares: Vec<Arc<dyn Middleware>>, final_handler: Handler) -> Self {
-        Self {
-            middlewares,
-            final_handler,
-            index: 0,
-        }
-    }
-    
-    pub fn process(mut self, ctx: Context) -> Response {
-        if self.index < self.middlewares.len() {
-            let middleware = self.middlewares[self.index].clone();
-            self.index += 1;
-            
-            let next = Box::new(move |ctx: Context| {
-                self.process(ctx)
-            });
-            
-            middleware.call(ctx, next)
-        } else {
-            (self.final_handler)(ctx)
-        }
+    pub fn process(
+        middlewares: &[Arc<dyn Middleware>],
+        final_handler: &Handler,
+        ctx: Context,
+    ) -> Response {
+        run_chain(middlewares, 0, final_handler, ctx)
     }
 }
 
-/// 日志中间件示例
+fn run_chain(
+    middlewares: &[Arc<dyn Middleware>],
+    index: usize,
+    final_handler: &Handler,
+    ctx: Context,
+) -> Response {
+    if index >= middlewares.len() {
+        return final_handler(ctx);
+    }
+
+    let next = |ctx: Context| -> Response {
+        run_chain(middlewares, index + 1, final_handler, ctx)
+    };
+
+    middlewares[index].call(ctx, &next)
+}
+
 pub struct LoggerMiddleware;
 
 impl Middleware for LoggerMiddleware {
-    fn call(&self, ctx: Context, next: Next) -> Response {
+    fn call(&self, ctx: Context, next: &dyn Fn(Context) -> Response) -> Response {
         let start = std::time::Instant::now();
-        log::info!("--> {} {}", ctx.method.as_str(), ctx.path);
-        
-        let ctx_clone = ctx.clone();
-        let response = next(ctx_clone);
-        
+        let method = ctx.method.as_str().to_string();
+        let path = ctx.path.clone();
+        log::info!("--> {} {}", method, path);
+
+        let response = next(ctx);
+
         let duration = start.elapsed();
-        log::info!("<-- {} {} ({}ms)", 
-            response.status, 
-            ctx.method.as_str(),
+        log::info!("<-- {} {} ({}ms)",
+            response.status,
+            method,
             duration.as_millis()
         );
-        
+
         response
     }
 }
 
-/// 恢复中间件（panic 处理）
 pub struct RecoveryMiddleware;
 
 impl Middleware for RecoveryMiddleware {
-    fn call(&self, ctx: Context, next: Next) -> Response {
+    fn call(&self, ctx: Context, next: &dyn Fn(Context) -> Response) -> Response {
         use std::panic::AssertUnwindSafe;
-        let ctx_clone = ctx.clone();
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            next(ctx_clone)
+            next(ctx)
         }));
-        
+
         match result {
             Ok(response) => response,
             Err(err) => {
@@ -84,7 +76,6 @@ impl Middleware for RecoveryMiddleware {
     }
 }
 
-/// CORS 中间件
 pub struct CORSMiddleware {
     allowed_origins: Vec<String>,
 }
@@ -96,16 +87,16 @@ impl CORSMiddleware {
 }
 
 impl Middleware for CORSMiddleware {
-    fn call(&self, ctx: Context, next: Next) -> Response {
+    fn call(&self, ctx: Context, next: &dyn Fn(Context) -> Response) -> Response {
         let mut response = next(ctx);
-        
-        let origin = "*".to_string(); // 简化实现，实际应从请求头获取
+
+        let origin = "*".to_string();
         if self.allowed_origins.contains(&origin) || self.allowed_origins.contains(&"*".to_string()) {
             response.headers.push(("Access-Control-Allow-Origin".to_string(), origin));
             response.headers.push(("Access-Control-Allow-Methods".to_string(), "GET, POST, PUT, DELETE, OPTIONS".to_string()));
             response.headers.push(("Access-Control-Allow-Headers".to_string(), "Content-Type".to_string()));
         }
-        
+
         response
     }
 }

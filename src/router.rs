@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use crate::{Method, Context, Response, Middleware, MiddlewareChain};
 use log::debug;
 
@@ -100,20 +100,20 @@ impl RouterNode {
 
 /// 路由器
 pub struct Router {
-    root: Arc<RwLock<RouterNode>>,
-    global_middlewares: Vec<Arc<dyn Middleware>>,
+    root: RouterNode,
+    global_middlewares: Arc<Vec<Arc<dyn Middleware>>>,
 }
 
 impl Router {
     pub fn new() -> Self {
         Self {
-            root: Arc::new(RwLock::new(RouterNode::new())),
-            global_middlewares: Vec::new(),
+            root: RouterNode::new(),
+            global_middlewares: Arc::new(Vec::new()),
         }
     }
     
     pub fn use_middleware<M: Middleware + 'static>(&mut self, middleware: M) {
-        self.global_middlewares.push(Arc::new(middleware));
+        Arc::make_mut(&mut self.global_middlewares).push(Arc::new(middleware));
     }
     
     pub fn add_route<F>(&mut self, method: Method, path: &str, handler: F) 
@@ -122,8 +122,7 @@ impl Router {
     {
         let handler = Arc::new(handler);
         debug!("Adding route: {} {}", method.as_str(), path);
-        let mut root = self.root.write().unwrap();
-        root.insert(method, path, handler);
+        self.root.insert(method, path, handler);
     }
     
     pub fn get<F, R>(&mut self, path: &str, handler: F) 
@@ -158,13 +157,10 @@ impl Router {
         self.add_route(Method::DELETE, path, move |ctx| handler(ctx).into());
     }
     
-    pub fn handle_request(&self, method: Method, path: &str, req_data: Vec<u8>) -> Response {
-        let root = self.root.read().unwrap();
-        if let Some((handler, params)) = root.find(&method, path) {
-            let ctx = Context::new(method, path.to_string(), params, req_data);
-            // 应用中间件链
-            let chain = MiddlewareChain::new(self.global_middlewares.clone(), handler);
-            chain.process(ctx)
+    pub fn handle_request(&self, method: Method, path: String, req_data: Vec<u8>) -> Response {
+        if let Some((handler, params)) = self.root.find(&method, &path) {
+            let ctx = Context::new(method, path, params, req_data);
+            MiddlewareChain::process(&self.global_middlewares, &handler, ctx)
         } else {
             Response::not_found()
         }

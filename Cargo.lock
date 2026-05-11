@@ -103,7 +103,9 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "gorust",
+ "itoa",
  "log",
+ "memchr",
  "num_cpus",
  "serde",
  "serde_json",

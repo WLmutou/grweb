@@ -68,7 +68,12 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
             Ok(0) => return,
             Ok(n) => {
                 if let Some((method, path, body, _header_end)) = parse_http_request(&buffer[..n]) {
-                    let response = router.handle_request(method, &path, body.to_vec());
+                    let req_data = if body.is_empty() {
+                        Vec::new()
+                    } else {
+                        body.to_vec()
+                    };
+                    let response = router.handle_request(method, path, req_data);
                     let response_bytes = format_response_fast(&response);
                     let _ = stream.write_all(&response_bytes);
                     let _ = stream.flush();
@@ -88,13 +93,11 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
 fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize)> {
     let header_end = find_headers_end(buffer)?;
 
-    let request_line_end = buffer.iter().position(|&b| b == b'\n')?;
+    let request_line_end = memchr::memchr(b'\n', buffer)?;
     let request_line = &buffer[..request_line_end];
 
-    let first_space = request_line.iter().position(|&b| b == b' ')?;
-    let second_space = request_line[first_space + 1..]
-        .iter()
-        .position(|&b| b == b' ')
+    let first_space = memchr::memchr(b' ', request_line)?;
+    let second_space = memchr::memchr(b' ', &request_line[first_space + 1..])
         .map(|p| first_space + 1 + p)?;
 
     let method_bytes = &request_line[..first_space];
@@ -122,16 +125,7 @@ fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize)> {
 }
 
 fn find_headers_end(buffer: &[u8]) -> Option<usize> {
-    for i in 0..buffer.len().saturating_sub(3) {
-        if buffer[i] == b'\r'
-            && buffer[i + 1] == b'\n'
-            && buffer[i + 2] == b'\r'
-            && buffer[i + 3] == b'\n'
-        {
-            return Some(i + 4);
-        }
-    }
-    None
+    buffer.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4)
 }
 
 fn format_response_fast(response: &Response) -> Vec<u8> {
@@ -146,10 +140,19 @@ fn format_response_fast(response: &Response) -> Vec<u8> {
     };
 
     let body_len = response.body.len();
-    let content_length = format!("Content-Length: {}\r\n", body_len);
+
+    let mut cl_buf = itoa::Buffer::new();
+    let content_length_str = cl_buf.format(body_len);
+
+    let cl_header = b"Content-Length: ";
+    let cl_suffix = b"\r\n";
     let connection = b"Connection: close\r\n";
 
-    let mut total_len = status_line.len() + content_length.len() + connection.len() + body_len + 2;
+    let mut total_len = status_line.len()
+        + cl_header.len() + content_length_str.len() + cl_suffix.len()
+        + connection.len()
+        + body_len + 2;
+
     for (k, v) in &response.headers {
         total_len += k.len() + v.len() + 4;
     }
@@ -157,7 +160,9 @@ fn format_response_fast(response: &Response) -> Vec<u8> {
     let mut result = Vec::with_capacity(total_len);
 
     result.extend_from_slice(status_line);
-    result.extend_from_slice(content_length.as_bytes());
+    result.extend_from_slice(cl_header);
+    result.extend_from_slice(content_length_str.as_bytes());
+    result.extend_from_slice(cl_suffix);
     result.extend_from_slice(connection);
 
     for (k, v) in &response.headers {
