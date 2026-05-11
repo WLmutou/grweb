@@ -7,6 +7,8 @@ use gorust::{go, runtime};
 use log::{info, error};
 use crate::{Router, Response, Method, ServerConfig};
 
+const READ_TIMEOUT_SECS: u64 = 5;
+
 pub struct Server {
     config: ServerConfig,
     router: Arc<Router>,
@@ -29,14 +31,20 @@ impl Server {
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_flag = shutdown.clone();
-        let shutdown_addr = addr.clone();
+        let shutdown_addr = self.config.addr();
 
-        go(move || {
+        std::thread::spawn(move || {
             while gorust::scheduler::Scheduler::is_running() {
                 std::thread::sleep(Duration::from_millis(100));
             }
             shutdown_flag.store(true, Ordering::SeqCst);
-            let _ = TcpStream::connect(&shutdown_addr);
+            let addr: std::net::SocketAddr = shutdown_addr.parse().unwrap();
+            for _ in 0..10 {
+                if TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
         });
 
         let router = self.router.clone();
@@ -75,6 +83,7 @@ fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConf
     if config.tcp_nodelay {
         let _ = stream.set_nodelay(true);
     }
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(READ_TIMEOUT_SECS)));
 
     let mut buffer = vec![0u8; config.read_buffer_size];
 
