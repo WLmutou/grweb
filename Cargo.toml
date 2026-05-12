@@ -1,6 +1,6 @@
 [package]
 name = "grweb"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 authors = ["lijun <1489573464@qq.com>"]
 description = "A high-performance Rust Web framework based on gorust coroutine runtime"

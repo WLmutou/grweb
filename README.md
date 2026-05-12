@@ -375,11 +375,11 @@ wrk 压测（4 线程 / 100 连接 / 5 秒，AMD Ryzen）：
 ---
 
 ## features
-[x] Keep-Alive 连接复用
-[x] 请求头解析（Cookie / Authorization）
-[x] 静态文件服务（MIME 自动检测 / 路径穿越防护）
-[x] WebSocket 支持（RFC 6455 / 分片重组 / ping-pong）
-[x] 表单数据解析（urlencoded / multipart）
+- [x] Keep-Alive 连接复用
+- [x] 请求头解析（Cookie / Authorization）
+- [x] 静态文件服务（MIME 自动检测 / 路径穿越防护）
+- [x] WebSocket 支持（RFC 6455 / 分片重组 / ping-pong）
+- [x] 表单数据解析（urlencoded / multipart）
 - HTTPS 支持
 [x] 连接池管理
 - 优雅降级和限流
