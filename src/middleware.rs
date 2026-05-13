@@ -70,7 +70,7 @@ impl Middleware for RecoveryMiddleware {
             Ok(response) => response,
             Err(err) => {
                 log::error!("Panic recovered: {:?}", err);
-                Response::internal_error()
+                crate::error::Error::internal("Internal server error occurred").to_response()
             }
         }
     }

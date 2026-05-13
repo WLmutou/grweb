@@ -9,6 +9,7 @@ pub mod config;
 pub mod static_files;
 pub mod websocket;
 pub mod pool;
+pub mod error;
 
 pub use router::Router;
 pub use middleware::{Middleware, MiddlewareChain};
@@ -17,6 +18,7 @@ pub use server::Server;
 pub use config::{AppConfig, ServerConfig, LoggingConfig, CorsConfig};
 pub use websocket::{WebSocket, Message};
 pub use pool::{ConnectionPool, SharedPool, PoolStats};
+pub use error::{Error, Result, ErrorResponse};
 
 /// HTTP 方法枚举
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -124,8 +126,8 @@ impl From<grorm::Error> for Response {
     }
 }
 
-impl<T: Into<Response>, E: std::fmt::Display> From<Result<T, E>> for Response {
-    fn from(result: Result<T, E>) -> Self {
+impl<T: Into<Response>, E: std::fmt::Display> From<std::result::Result<T, E>> for Response {
+    fn from(result: std::result::Result<T, E>) -> Self {
         match result {
             Ok(t) => t.into(),
             Err(e) => {

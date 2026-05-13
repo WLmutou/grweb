@@ -1,8 +1,8 @@
 use serde::Serialize;
 use gorust::go;
-use grweb::{Server, Router, Context, Response, AppConfig, WebSocket, Message, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
+use grweb::{Server, Router, Context, Response, AppConfig, WebSocket, Message, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}, Error};
 use serde_json::json;
-use grorm::{ConnectionConfig, ConnectionPool as DbConnectionPool, PostgresDriverFactory, QueryBuilder, Error};
+use grorm::{ConnectionConfig, ConnectionPool as DbConnectionPool, PostgresDriverFactory, QueryBuilder};
 use grorm::DeriveModel;
 use std::sync::Arc;
 
@@ -23,8 +23,7 @@ impl ResUser {
     }
 
     fn create(&self, ctx: &Context) -> Result<(), Error> {
-        let db_pool = ctx.get_db_pool();
-        let mut conn = db_pool.get()?;
+        let mut conn = ctx.get_db()?;
         let mut qb = QueryBuilder::<ResUser>::new(conn.driver_mut());
         qb.create_table()?;
         qb.insert(self)?;
@@ -136,8 +135,7 @@ fn create_user_handler(ctx: Context) -> Result<Response, Error> {
     
 
 fn get_users_handler(ctx: Context) -> Result<Response, Error> {
-    // ctx.get_db_pool()?;
-    let mut conn = ctx.get_db_pool().get()?;
+    let mut conn = ctx.get_db()?;
     let mut db = QueryBuilder::<ResUser>::new(conn.driver_mut());
     let users = db.find_all()?;
     Ok(Response::json(users))

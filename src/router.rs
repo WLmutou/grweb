@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use grorm::ConnectionPool;
-use crate::{Method, Context, Response, Middleware, MiddlewareChain, WebSocket, SharedPool, PoolStats};
+use crate::{Method, Context, Response, Middleware, MiddlewareChain, WebSocket, SharedPool, PoolStats, Error};
 use crate::static_files;
 use log::debug;
 
 pub type Handler = Arc<dyn Fn(Context) -> Response + Send + Sync>;
+pub type ResultHandler = Arc<dyn Fn(Context) -> Result<Response, Error> + Send + Sync>;
 pub type WsHandler = Arc<dyn Fn(WebSocket) + Send + Sync>;
 
 /// 路由节点（支持路径参数）
@@ -193,6 +194,62 @@ impl Router {
         R: Into<Response>
     {
         self.add_route(Method::DELETE, path, move |ctx| handler(ctx).into());
+    }
+    
+    pub fn get_result<F>(&mut self, path: &str, handler: F) 
+    where 
+        F: Fn(Context) -> Result<Response, Error> + Send + Sync + 'static,
+    {
+        let handler = Arc::new(handler);
+        debug!("Adding route: GET {}", path);
+        self.root.insert(Method::GET, path, Arc::new(move |ctx| {
+            match handler(ctx) {
+                Ok(resp) => resp,
+                Err(err) => err.to_response(),
+            }
+        }));
+    }
+    
+    pub fn post_result<F>(&mut self, path: &str, handler: F) 
+    where 
+        F: Fn(Context) -> Result<Response, Error> + Send + Sync + 'static,
+    {
+        let handler = Arc::new(handler);
+        debug!("Adding route: POST {}", path);
+        self.root.insert(Method::POST, path, Arc::new(move |ctx| {
+            match handler(ctx) {
+                Ok(resp) => resp,
+                Err(err) => err.to_response(),
+            }
+        }));
+    }
+    
+    pub fn put_result<F>(&mut self, path: &str, handler: F) 
+    where 
+        F: Fn(Context) -> Result<Response, Error> + Send + Sync + 'static,
+    {
+        let handler = Arc::new(handler);
+        debug!("Adding route: PUT {}", path);
+        self.root.insert(Method::PUT, path, Arc::new(move |ctx| {
+            match handler(ctx) {
+                Ok(resp) => resp,
+                Err(err) => err.to_response(),
+            }
+        }));
+    }
+    
+    pub fn delete_result<F>(&mut self, path: &str, handler: F) 
+    where 
+        F: Fn(Context) -> Result<Response, Error> + Send + Sync + 'static,
+    {
+        let handler = Arc::new(handler);
+        debug!("Adding route: DELETE {}", path);
+        self.root.insert(Method::DELETE, path, Arc::new(move |ctx| {
+            match handler(ctx) {
+                Ok(resp) => resp,
+                Err(err) => err.to_response(),
+            }
+        }));
     }
 
     pub fn serve_static(&mut self, url_prefix: &str, dir_path: &str) {
