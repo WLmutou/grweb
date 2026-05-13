@@ -19,9 +19,18 @@ static_dir = "target/public"
 # 连接超时时间（秒，默认 30）
 # connection_timeout = 30
 
+[database]
+# 数据库配置
+host = "127.0.0.1"
+port = 5432
+username = "odoo"
+password = "odoo"
+database = "testdb"
+max_size = 5  # 链接最大数量,默认5
+
 [logging]
 # 日志级别: trace, debug, info, warn, error
-level = "error"
+level = "debug"
 
 [cors]
 # 允许的跨域来源

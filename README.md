@@ -370,7 +370,7 @@ wrk 压测（4 线程 / 100 连接 / 5 秒，AMD Ryzen）：
 | gorust web_server_router | 72,900 | 816μs | HashMap 路由 |
 | **grweb** | **88,000** | 660μs | 树形路由 + 3 层中间件 + 完整解析 |
 
-空闲 CPU：**< 1%**（阻塞 I/O + 指数退避调度）
+空闲 CPU：**< 1%**
 
 ---
 
@@ -380,8 +380,8 @@ wrk 压测（4 线程 / 100 连接 / 5 秒，AMD Ryzen）：
 - [x] 静态文件服务（MIME 自动检测 / 路径穿越防护）
 - [x] WebSocket 支持（RFC 6455 / 分片重组 / ping-pong）
 - [x] 表单数据解析（urlencoded / multipart）
+- [x] 连接池管理
 - HTTPS 支持
-[x] 连接池管理
 - 优雅降级和限流
 - 测试用例（未见 tests/ 目录）
 

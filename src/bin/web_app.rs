@@ -1,7 +1,36 @@
-
+use serde::Serialize;
 use gorust::go;
 use grweb::{Server, Router, Context, Response, AppConfig, WebSocket, Message, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
 use serde_json::json;
+use grorm::{ConnectionConfig, ConnectionPool as DbConnectionPool, PostgresDriverFactory, QueryBuilder, Error};
+use grorm::DeriveModel;
+use std::sync::Arc;
+
+
+#[derive(Debug, DeriveModel, Serialize)]
+#[table("res_user")]
+struct ResUser {
+    id: i64,                          // 自动主键
+    #[index]                          // 单列索引
+    name: String,
+    #[unique]                         // 单列唯一约束
+    email: String,
+    age: i32,
+}
+impl ResUser {
+    fn new(name: String, email: String, age: i32) -> Self {
+        Self { id: 0, name, email, age }
+    }
+
+    fn create(&self, ctx: &Context) -> Result<(), Error> {
+        let db_pool = ctx.get_db_pool();
+        let mut conn = db_pool.get()?;
+        let mut qb = QueryBuilder::<ResUser>::new(conn.driver_mut());
+        qb.create_table()?;
+        qb.insert(self)?;
+        Ok(())
+    }
+}
 
 
 
@@ -40,12 +69,14 @@ fn form_page_handler(_ctx: Context) -> Response {
 <form action="/form" method="post">
     <input name="username" placeholder="Username"><br>
     <input name="email" placeholder="Email"><br>
+    <input name="age" placeholder="Age"><br>
     <button type="submit">Submit URL-Encoded</button>
 </form>
-<h2>Multipart Form</h2>
-<form action="/form" method="post" enctype="multipart/form-data">
+<h2>Multipart Form，create user</h2>
+<form action="/api/user" method="post" enctype="multipart/form-data">
     <input name="name" placeholder="Name"><br>
-    <input name="message" placeholder="Message"><br>
+    <input name="email" placeholder="Email"><br>
+    <input name="age" placeholder="Age"><br>
     <button type="submit">Submit Multipart</button>
 </form>
 </body>
@@ -92,22 +123,24 @@ fn pool_stats_handler(ctx: Context) -> Response {
     }
 }
 
-fn create_user_handler(ctx: Context) -> Response {
-    let body_str = ctx.body_string();
-    let response = json!({
-        "status": "success",
-        "message": format!("Received: {}", body_str),
-        "data": body_str
-    });
-    Response::json(response.to_string())
+fn create_user_handler(ctx: Context) -> Result<Response, Error> {
+     let values = ctx.form_values();
+    let user = ResUser::new(
+        values["name"].to_string(),
+        values["email"].to_string(),
+        values["age"].parse::<i32>().unwrap(),
+    );
+    user.create(&ctx)?;
+    Ok(Response::json(user))
 }
+    
 
-fn get_users_handler(_ctx: Context) -> Response {
-    let users = json!([
-        {"id": 1, "name": "Alice"},
-        {"id": 2, "name": "Bob"}
-    ]);
-    Response::json(users.to_string())
+fn get_users_handler(ctx: Context) -> Result<Response, Error> {
+    // ctx.get_db_pool()?;
+    let mut conn = ctx.get_db_pool().get()?;
+    let mut db = QueryBuilder::<ResUser>::new(conn.driver_mut());
+    let users = db.find_all()?;
+    Ok(Response::json(users))
 }
 
 fn slow_handler(_ctx: Context) -> Response {
@@ -188,7 +221,8 @@ fn handle_json(_ctx: Context) -> Response {
             "work stealing",
             "non-blocking I/O",
             "dynamic routing"
-        ]
+        ],
+        "database_connected": true
     }"#;
     Response::json(body)
 }
@@ -211,6 +245,7 @@ fn handle_about(_ctx: Context) -> Response {
                 <li><strong>Low Memory Footprint</strong> - ~3MB base memory</li>
                 <li><strong>High Throughput</strong> - 95,000 req/s</li>
                 <li><strong>Low Latency</strong> - ~0.59ms average</li>
+            <li><strong>Database Integration</strong> - Integrated connection pooling</li>
             </ul>
             
             <h2>Architecture:</h2>
@@ -247,6 +282,7 @@ fn handle_status(_ctx: Context) -> Response {
                 <tr><td>Memory Usage</td><td>~3MB</td></tr>
                 <tr><td>Concurrency Model</td><td>M:N Goroutines</td></tr>
                 <tr><td>Scheduler</td><td>Work Stealing</td></tr>
+                <tr><td>Database Pool</td><td>Integrated</td></tr>
             </table>
             <p><a href="/">← Back to home</a></p>
         </body>
@@ -258,28 +294,29 @@ fn handle_status(_ctx: Context) -> Response {
 
 fn handle_user(ctx: Context) -> Response {
     let user_id = ctx.param("id").map(|s| s.as_str()).unwrap_or("unknown");
+        // 如果没有数据库连接池，则使用原始逻辑
+        let mut body = String::new();
+        body.push_str(
+            r#"<html>
+            <head>
+                <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+            </head>
+            <body>
+                <h1>👤 User Profile</h1>
+                <p><strong>User ID:</strong> "#,
+        );
+        body.push_str(user_id);
+        body.push_str(
+            r#"</p>
+                <p><strong>Page:</strong> Dynamic route handling</p>
+                <p>This page demonstrates dynamic routing with path parameters.</p>
+                <p><a href="/">← Back to home</a></p>
+            </body>
+        </html>"#,
+        );
 
-    let mut body = String::new();
-    body.push_str(
-        r#"<html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
-        </head>
-        <body>
-            <h1>👤 User Profile</h1>
-            <p><strong>User ID:</strong> "#,
-    );
-    body.push_str(user_id);
-    body.push_str(
-        r#"</p>
-            <p><strong>Page:</strong> Dynamic route handling</p>
-            <p>This page demonstrates dynamic routing with path parameters.</p>
-            <p><a href="/">← Back to home</a></p>
-        </body>
-    </html>"#,
-    );
+        Response::html(body)    
 
-    Response::html(body)    
 }
 
 
@@ -352,22 +389,35 @@ fn grweb_print() {
     println!("   curl http://127.0.0.1:9030/post/2024/01/hello-world");
     println!();
     println!("⚡ Performance: ~95,000 req/s | Latency: ~0.59ms");
+    println!("📚 Database: Integrated connection pool");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!();
 }
 
 
-fn main() {
-    let config = AppConfig::load("config.toml").expect("Failed to load config");
+#[gorust::runtime]
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = AppConfig::load("src/bin/config.toml").expect("Failed to load config");
 
     unsafe {
         std::env::set_var("RUST_LOG", &config.logging.level);
     }
+
+    let dbconf = config.database;
+    println!("{:?}", dbconf);
+    let dbconfig = ConnectionConfig::new(&dbconf.host, 
+                    dbconf.port, 
+                    &dbconf.username, 
+                    &dbconf.password, 
+                    &dbconf.database);
     
+    // 创建数据库连接池
+    let db_pool = Arc::new(DbConnectionPool::new(PostgresDriverFactory, dbconfig, dbconf.max_size));
+
     env_logger::init();
 
-    let mut router = Router::new();
-
+    let mut router = Router::new_with_db(db_pool.clone());
+    
     router.use_middleware(LoggerMiddleware);
     router.use_middleware(RecoveryMiddleware);
     router.use_middleware(CORSMiddleware::new(
@@ -400,9 +450,10 @@ fn main() {
 
     // print routes info
     go(grweb_print);
-    // run server
+    // run server with database pool
     let server = Server::new(config.server, router);
     if let Err(e) = server.run() {
         eprintln!("Server error: {}", e);
     }
+    Ok(())
 }

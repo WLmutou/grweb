@@ -6,6 +6,7 @@ use std::path::Path;
 pub struct AppConfig {
     #[serde(default)]
     pub server: ServerConfig,
+    pub database: DatabaseConfig,
     #[serde(default)]
     pub logging: LoggingConfig,
     #[serde(default)]
@@ -35,6 +36,22 @@ pub struct ServerConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DatabaseConfig {
+    #[serde(default = "default_host")]
+    pub host: String,
+    #[serde(default = "default_port")]
+    pub port: u16,
+    #[serde(default = "default_username")]
+    pub username: String,
+    #[serde(default = "default_password")]
+    pub password: String,
+    #[serde(default = "default_database")]
+    pub database: String,
+    #[serde(default = "default_max_size")]
+    pub max_size: usize,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct LoggingConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
@@ -54,6 +71,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             server: ServerConfig::default(),
+            database: DatabaseConfig::default(),
             logging: LoggingConfig::default(),
             cors: CorsConfig::default(),
         }
@@ -75,6 +93,20 @@ impl Default for ServerConfig {
         }
     }
 }
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            host: default_host(),
+            port: default_port(),
+            username: default_username(),
+            password: default_password(),
+            database: default_database(),
+            max_size: default_max_size(),
+        }
+    }
+}
+
 
 impl Default for LoggingConfig {
     fn default() -> Self {
@@ -149,6 +181,22 @@ fn default_max_connections() -> usize {
 fn default_connection_timeout() -> u64 {
     30
 }
+
+fn default_username()  -> String {
+    "root".to_string()
+}
+fn default_password() -> String {
+    "".to_string()
+}
+
+fn default_database() -> String {
+    "grweb_db".to_string()
+}
+
+fn default_max_size() -> usize {
+    5
+}
+
 
 fn default_log_level() -> String {
     "info".to_string()

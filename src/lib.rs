@@ -1,3 +1,6 @@
+use serde::Serialize;
+use serde_json::json;
+
 pub mod router;
 pub mod middleware;
 pub mod context;
@@ -49,6 +52,8 @@ pub struct Response {
     pub body: Vec<u8>,
 }
 
+
+
 impl Response {
     pub fn new(status: u16, body: impl Into<Vec<u8>>) -> Self {
         Self {
@@ -60,7 +65,36 @@ impl Response {
         }
     }
     
-    pub fn json(body: impl Into<Vec<u8>>) -> Self {
+     // 接受任何可序列化的类型
+    pub fn json<T: Serialize>(data: T) -> Self {
+        let body = serde_json::to_vec(&data).unwrap_or_else(|_| {
+            json!({"error": "Failed to serialize JSON"}).to_string().into_bytes()
+        });
+        
+        Self {
+            status: 200,
+            headers: vec![
+                ("Content-Type".to_string(), "application/json;charset=utf-8".to_string()),
+            ],
+            body,
+        }
+    }
+    // 带状态码的 JSON 响应
+    pub fn json_with_status<T: Serialize>(status: u16, data: T) -> Self {
+        let body = serde_json::to_vec(&data).unwrap_or_else(|_| {
+            json!({"error": "Failed to serialize JSON"}).to_string().into_bytes()
+        });
+        
+        Self {
+            status,
+            headers: vec![
+                ("Content-Type".to_string(), "application/json;charset=utf-8".to_string()),
+            ],
+            body,
+        }
+    }
+    
+    pub fn json_str(body: impl Into<Vec<u8>>) -> Self {
         let mut resp = Self::new(200, body);
         resp.headers = vec![("Content-Type".to_string(), "application/json".to_string())];
         resp
@@ -81,20 +115,25 @@ impl Response {
     }
 }
 
-impl From<&str> for Response {
-    fn from(s: &str) -> Self {
-        Response::html(s.to_string())
+impl From<grorm::Error> for Response {
+    fn from(err: grorm::Error) -> Self {
+        let msg = format!(r#"{{"error":"{}"}}"#, err);
+        let mut resp = Response::new(500, msg);
+        resp.headers = vec![("Content-Type".to_string(), "application/json".to_string())];
+        resp
     }
 }
 
-impl From<String> for Response {
-    fn from(s: String) -> Self {
-        Response::html(s)
-    }
-}
-
-impl From<Vec<u8>> for Response {
-    fn from(data: Vec<u8>) -> Self {
-        Response::new(200, data)
+impl<T: Into<Response>, E: std::fmt::Display> From<Result<T, E>> for Response {
+    fn from(result: Result<T, E>) -> Self {
+        match result {
+            Ok(t) => t.into(),
+            Err(e) => {
+                let msg = format!(r#"{{"error":"{}"}}"#, e);
+                let mut resp = Response::new(500, msg);
+                resp.headers = vec![("Content-Type".to_string(), "application/json".to_string())];
+                resp
+            }
+        }
     }
 }

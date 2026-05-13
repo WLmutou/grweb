@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use gorust::{go, runtime};
+use grorm::ConnectionPool as dbConnectionPool;
 use log::{info, error};
 use crate::{Router, Response, Method, ServerConfig, WebSocket, ConnectionPool, SharedPool};
 
@@ -23,6 +24,11 @@ impl Server {
             router: Arc::new(router),
             pool,
         }
+    }
+
+    pub fn with_db_pool(mut self, db_pool: Arc<dbConnectionPool>) -> Self {
+        Arc::get_mut(&mut self.router).unwrap().set_db_pool(db_pool);
+        self
     }
 
     pub fn pool(&self) -> &SharedPool {

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use grorm::ConnectionPool;
 use crate::{Method, Context, Response, Middleware, MiddlewareChain, WebSocket, SharedPool, PoolStats};
 use crate::static_files;
 use log::debug;
@@ -107,6 +108,8 @@ pub struct Router {
     static_dirs: Vec<(String, String)>,
     ws_routes: HashMap<String, WsHandler>,
     pool: Option<SharedPool>,
+    /// 数据库连接池
+    db_pool: Arc<ConnectionPool>,
 }
 
 impl Router {
@@ -117,11 +120,30 @@ impl Router {
             static_dirs: Vec::new(),
             ws_routes: HashMap::new(),
             pool: None,
+            db_pool: Arc::new(ConnectionPool::default()),
         }
+    }
+    pub fn new_with_db(db_pool: Arc<ConnectionPool>) -> Self{
+        Self {
+            root: RouterNode::new(),
+            global_middlewares: Arc::new(Vec::new()),
+            static_dirs: Vec::new(),
+            ws_routes: HashMap::new(),
+            pool: None,
+            db_pool: db_pool,
+        }
+    }
+
+      pub fn get_db_pool(&self) -> Arc<ConnectionPool> {
+        self.db_pool.clone()
     }
 
     pub fn set_pool(&mut self, pool: SharedPool) {
         self.pool = Some(pool);
+    }
+
+    pub fn set_db_pool(&mut self, db_pool: Arc<ConnectionPool>) {
+        self.db_pool = db_pool;
     }
 
     pub fn pool_stats(&self) -> Option<PoolStats> {
@@ -201,6 +223,7 @@ impl Router {
             if let Some(ref pool) = self.pool {
                 ctx = ctx.with_pool(pool.clone());
             }
+            ctx = ctx.with_db_pool(self.db_pool.clone());
             MiddlewareChain::process(&self.global_middlewares, &handler, ctx)
         } else {
             Response::not_found()

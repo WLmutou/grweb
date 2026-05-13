@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use grorm::ConnectionPool;
 use crate::Method;
 use crate::pool::{SharedPool, PoolStats};
 
@@ -11,6 +13,8 @@ pub struct Context {
     pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
     pool: Option<SharedPool>,
+    /// 数据库连接池
+    pub db_pool: Arc<ConnectionPool>,
 }
 
 impl Context {
@@ -28,6 +32,7 @@ impl Context {
             headers,
             body,
             pool: None,
+            db_pool: Arc::new(ConnectionPool::default()),
         }
     }
 
@@ -35,6 +40,17 @@ impl Context {
         self.pool = Some(pool);
         self
     }
+
+    pub fn with_db_pool(mut self, db_pool: Arc<ConnectionPool>) -> Self {
+        self.db_pool = db_pool;
+        self
+    }
+
+    pub fn get_db_pool(&self) -> Arc<ConnectionPool> {
+        self.db_pool.clone()
+    }
+
+
 
     pub fn pool_stats(&self) -> Option<PoolStats> {
         self.pool.as_ref().map(|p| p.stats())

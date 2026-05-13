@@ -1,0 +1,41 @@
+# grweb 配置文件
+# 所有字段均为可选，未配置的字段将使用默认值
+
+[server]
+# 监听地址
+host = "127.0.0.1"
+# 监听端口
+port = 9030
+# 工作线程池大小（默认 = CPU 核心数）
+# worker_pool_size = 4
+# 请求读取缓冲区大小（字节）
+# read_buffer_size = 8192
+# 是否启用 TCP_NODELAY
+# tcp_nodelay = true
+# 静态文件目录
+static_dir = "target/public"
+# 最大并发连接数（0 = 不限制，默认 0）
+# max_connections = 10000
+# 连接超时时间（秒，默认 30）
+# connection_timeout = 30
+
+[database]
+# 数据库配置
+host = "127.0.0.1"
+port = 5432
+username = "odoo"
+password = "odoo"
+database = "testdb"
+max_size = 5  # 链接最大数量,默认5
+
+[logging]
+# 日志级别: trace, debug, info, warn, error
+level = "error"
+
+[cors]
+# 允许的跨域来源
+allowed_origins = ["*"]
+# 允许的 HTTP 方法
+# allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+# 允许的请求头
+# allowed_headers = ["Content-Type"]
