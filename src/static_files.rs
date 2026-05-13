@@ -1,6 +1,6 @@
+use crate::Response;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::Response;
 
 pub fn get_mime_type(path: &str) -> &'static str {
     let ext = Path::new(path)
@@ -67,9 +67,10 @@ pub fn serve_file(root_dir: &str, url_path: &str) -> Response {
             match fs::read(&index_path) {
                 Ok(data) => {
                     let mut resp = Response::new(200, data);
-                    resp.headers = vec![
-                        ("Content-Type".to_string(), "text/html;charset=utf-8".to_string()),
-                    ];
+                    resp.headers = vec![(
+                        "Content-Type".to_string(),
+                        "text/html;charset=utf-8".to_string(),
+                    )];
                     return resp;
                 }
                 Err(_) => return Response::not_found(),
@@ -82,9 +83,7 @@ pub fn serve_file(root_dir: &str, url_path: &str) -> Response {
         Ok(data) => {
             let mime = get_mime_type(canonical_path.to_str().unwrap_or(""));
             let mut resp = Response::new(200, data);
-            resp.headers = vec![
-                ("Content-Type".to_string(), mime.to_string()),
-            ];
+            resp.headers = vec![("Content-Type".to_string(), mime.to_string())];
             resp
         }
         Err(_) => Response::not_found(),

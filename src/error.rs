@@ -59,7 +59,11 @@ impl Error {
         }
     }
 
-    pub fn business_with_details(code: i32, message: impl Into<String>, details: impl Into<String>) -> Self {
+    pub fn business_with_details(
+        code: i32,
+        message: impl Into<String>,
+        details: impl Into<String>,
+    ) -> Self {
         Error::Business {
             code,
             message: message.into(),
@@ -100,7 +104,10 @@ impl Error {
         }
     }
 
-    pub fn database_with_source(message: impl Into<String>, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+    pub fn database_with_source(
+        message: impl Into<String>,
+        source: impl std::error::Error + Send + Sync + 'static,
+    ) -> Self {
         Error::Database {
             message: message.into(),
             source: Some(Box::new(source)),
@@ -114,7 +121,10 @@ impl Error {
         }
     }
 
-    pub fn internal_with_source(message: impl Into<String>, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+    pub fn internal_with_source(
+        message: impl Into<String>,
+        source: impl std::error::Error + Send + Sync + 'static,
+    ) -> Self {
         Error::Internal {
             message: message.into(),
             source: Some(Box::new(source)),
@@ -130,7 +140,12 @@ impl Error {
         }
     }
 
-    pub fn custom_with_details(code: i32, message: impl Into<String>, status: u16, details: impl Into<String>) -> Self {
+    pub fn custom_with_details(
+        code: i32,
+        message: impl Into<String>,
+        status: u16,
+        details: impl Into<String>,
+    ) -> Self {
         Error::Custom {
             code,
             message: message.into(),
@@ -205,8 +220,12 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Business { message, .. } => write!(f, "Business error: {}", message),
-            Error::Validation { field, message } => write!(f, "Validation error on '{}': {}", field, message),
-            Error::NotFound { resource, id } => write!(f, "Not found: {} with id '{}'", resource, id),
+            Error::Validation { field, message } => {
+                write!(f, "Validation error on '{}': {}", field, message)
+            }
+            Error::NotFound { resource, id } => {
+                write!(f, "Not found: {} with id '{}'", resource, id)
+            }
             Error::Unauthorized { message } => write!(f, "Unauthorized: {}", message),
             Error::Forbidden { message } => write!(f, "Forbidden: {}", message),
             Error::Database { message, .. } => write!(f, "Database error: {}", message),
@@ -219,8 +238,12 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::Database { source, .. } => source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
-            Error::Internal { source, .. } => source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
+            Error::Database { source, .. } => source
+                .as_ref()
+                .map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
+            Error::Internal { source, .. } => source
+                .as_ref()
+                .map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
             _ => None,
         }
     }

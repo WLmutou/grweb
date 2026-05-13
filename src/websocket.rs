@@ -1,6 +1,6 @@
+use sha1::{Digest, Sha1};
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use sha1::{Sha1, Digest};
 
 const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -61,9 +61,7 @@ impl WebSocket {
         }
 
         match opcode {
-            OP_TEXT => {
-                String::from_utf8(frame_data).ok().map(Message::Text)
-            }
+            OP_TEXT => String::from_utf8(frame_data).ok().map(Message::Text),
             OP_BINARY => Some(Message::Binary(frame_data)),
             OP_CLOSE => {
                 let code = if frame_data.len() >= 2 {

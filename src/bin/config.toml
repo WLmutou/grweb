@@ -6,6 +6,8 @@
 host = "127.0.0.1"
 # 监听端口
 port = 9030
+# 日志级别: trace, debug, info, warn, error
+log_level = "error"
 # 工作线程池大小（默认 = CPU 核心数）
 # worker_pool_size = 4
 # 请求读取缓冲区大小（字节）
@@ -31,6 +33,11 @@ max_size = 5  # 链接最大数量,默认5
 [logging]
 # 日志级别: trace, debug, info, warn, error
 level = "error"
+# 日志输出目标: console, file
+output = "console"
+# 日志文件路径
+file = "/tmp/grweb.log"
+
 
 [cors]
 # 允许的跨域来源

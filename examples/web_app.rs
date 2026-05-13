@@ -1,25 +1,35 @@
-use serde::Serialize;
 use gorust::go;
-use grweb::{Server, Router, Context, Response, AppConfig, WebSocket, Message, middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
-use serde_json::json;
-use grorm::{ConnectionConfig, ConnectionPool as DbConnectionPool, PostgresDriverFactory, QueryBuilder, Error};
 use grorm::DeriveModel;
+use grorm::{
+    ConnectionConfig, ConnectionPool as DbConnectionPool, Error, PostgresDriverFactory,
+    QueryBuilder,
+};
+use grweb::{
+    middleware::{CORSMiddleware, LoggerMiddleware, RecoveryMiddleware},
+    AppConfig, Context, Message, Response, Router, Server, WebSocket,
+};
+use serde::Serialize;
+use serde_json::json;
 use std::sync::Arc;
-
 
 #[derive(Debug, DeriveModel, Serialize)]
 #[table("res_user")]
 struct ResUser {
-    id: i64,                          // 自动主键
-    #[index]                          // 单列索引
+    id: i64, // 自动主键
+    #[index] // 单列索引
     name: String,
-    #[unique]                         // 单列唯一约束
+    #[unique] // 单列唯一约束
     email: String,
     age: i32,
 }
 impl ResUser {
     fn new(name: String, email: String, age: i32) -> Self {
-        Self { id: 0, name, email, age }
+        Self {
+            id: 0,
+            name,
+            email,
+            age,
+        }
     }
 
     fn create(&self, ctx: &Context) -> Result<(), Error> {
@@ -31,8 +41,6 @@ impl ResUser {
         Ok(())
     }
 }
-
-
 
 fn hello_handler(ctx: Context) -> Response {
     let default_name = "World".to_string();
@@ -124,7 +132,7 @@ fn pool_stats_handler(ctx: Context) -> Response {
 }
 
 fn create_user_handler(ctx: Context) -> Result<Response, Error> {
-     let values = ctx.form_values();
+    let values = ctx.form_values();
     let user = ResUser::new(
         values["name"].to_string(),
         values["email"].to_string(),
@@ -133,7 +141,6 @@ fn create_user_handler(ctx: Context) -> Result<Response, Error> {
     user.create(&ctx)?;
     Ok(Response::json(user))
 }
-    
 
 fn get_users_handler(ctx: Context) -> Result<Response, Error> {
     // ctx.get_db_pool()?;
@@ -149,11 +156,8 @@ fn slow_handler(_ctx: Context) -> Response {
     Response::html("<h1>Slow response completed!</h1>".to_string())
 }
 
-
-
-
 // ============== 静态路由处理器 ==============
-fn handle_home(_ctx: Context) -> Response{
+fn handle_home(_ctx: Context) -> Response {
     let body = r#"<html>
         <head>
             <title>GRweb Web Server</title> 
@@ -291,35 +295,31 @@ fn handle_status(_ctx: Context) -> Response {
     Response::html(body)
 }
 
-
 fn handle_user(ctx: Context) -> Response {
     let user_id = ctx.param("id").map(|s| s.as_str()).unwrap_or("unknown");
-        // 如果没有数据库连接池，则使用原始逻辑
-        let mut body = String::new();
-        body.push_str(
-            r#"<html>
+    // 如果没有数据库连接池，则使用原始逻辑
+    let mut body = String::new();
+    body.push_str(
+        r#"<html>
             <head>
                 <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
             </head>
             <body>
                 <h1>👤 User Profile</h1>
                 <p><strong>User ID:</strong> "#,
-        );
-        body.push_str(user_id);
-        body.push_str(
-            r#"</p>
+    );
+    body.push_str(user_id);
+    body.push_str(
+        r#"</p>
                 <p><strong>Page:</strong> Dynamic route handling</p>
                 <p>This page demonstrates dynamic routing with path parameters.</p>
                 <p><a href="/">← Back to home</a></p>
             </body>
         </html>"#,
-        );
+    );
 
-        Response::html(body)    
-
+    Response::html(body)
 }
-
-
 
 fn handle_post(ctx: Context) -> Response {
     let year = ctx.param("year").map(|s| s.as_str()).unwrap_or("unknown");
@@ -356,9 +356,6 @@ fn handle_post(ctx: Context) -> Response {
     Response::html(body)
 }
 
-
-
-
 fn grweb_print() {
     println!("╔════════════════════════════════════════════════════════════╗");
     println!("║                  grweb   Web Server                        ║");
@@ -394,30 +391,28 @@ fn grweb_print() {
     println!();
 }
 
-
-#[gorust::runtime]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = AppConfig::load("src/bin/config.toml").expect("Failed to load config");
 
-    unsafe {
-        std::env::set_var("RUST_LOG", &config.logging.level);
-    }
-
-    let dbconf = config.database;
+    let dbconf = &config.database;
     println!("{:?}", dbconf);
-    let dbconfig = ConnectionConfig::new(&dbconf.host, 
-                    dbconf.port, 
-                    &dbconf.username, 
-                    &dbconf.password, 
-                    &dbconf.database);
-    
-    // 创建数据库连接池
-    let db_pool = Arc::new(DbConnectionPool::new(PostgresDriverFactory, dbconfig, dbconf.max_size));
+    let dbconfig = ConnectionConfig::new(
+        &dbconf.host,
+        dbconf.port,
+        &dbconf.username,
+        &dbconf.password,
+        &dbconf.database,
+    );
 
-    env_logger::init();
+    // 创建数据库连接池
+    let db_pool = Arc::new(DbConnectionPool::new(
+        PostgresDriverFactory,
+        dbconfig,
+        dbconf.max_size,
+    ));
 
     let mut router = Router::new_with_db(db_pool.clone());
-    
+
     router.use_middleware(LoggerMiddleware);
     router.use_middleware(RecoveryMiddleware);
     router.use_middleware(CORSMiddleware::new(
@@ -451,7 +446,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // print routes info
     go(grweb_print);
     // run server with database pool
-    let server = Server::new(config.server, router);
+    let server = Server::new(config, router);
     if let Err(e) = server.run() {
         eprintln!("Server error: {}", e);
     }

@@ -55,6 +55,10 @@ pub struct DatabaseConfig {
 pub struct LoggingConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
+    #[serde(default = "default_log_output")]
+    pub output: String,
+    #[serde(default)]
+    pub file: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,11 +111,12 @@ impl Default for DatabaseConfig {
     }
 }
 
-
 impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
             level: default_log_level(),
+            output: default_log_output(),
+            file: None,
         }
     }
 }
@@ -182,7 +187,7 @@ fn default_connection_timeout() -> u64 {
     30
 }
 
-fn default_username()  -> String {
+fn default_username() -> String {
     "root".to_string()
 }
 fn default_password() -> String {
@@ -197,9 +202,12 @@ fn default_max_size() -> usize {
     5
 }
 
-
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+fn default_log_output() -> String {
+    "console".to_string()
 }
 
 fn default_allowed_origins() -> Vec<String> {

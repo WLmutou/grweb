@@ -1,6 +1,6 @@
-use std::sync::Arc;
-use crate::{Context, Response};
 use crate::router::Handler;
+use crate::{Context, Response};
+use std::sync::Arc;
 
 pub trait Middleware: Send + Sync {
     fn call(&self, ctx: Context, next: &dyn Fn(Context) -> Response) -> Response;
@@ -28,9 +28,7 @@ fn run_chain(
         return final_handler(ctx);
     }
 
-    let next = |ctx: Context| -> Response {
-        run_chain(middlewares, index + 1, final_handler, ctx)
-    };
+    let next = |ctx: Context| -> Response { run_chain(middlewares, index + 1, final_handler, ctx) };
 
     middlewares[index].call(ctx, &next)
 }
@@ -47,7 +45,8 @@ impl Middleware for LoggerMiddleware {
         let response = next(ctx);
 
         let duration = start.elapsed();
-        log::info!("<-- {} {} ({}ms)",
+        log::info!(
+            "<-- {} {} ({}ms)",
             response.status,
             method,
             duration.as_millis()
@@ -62,9 +61,7 @@ pub struct RecoveryMiddleware;
 impl Middleware for RecoveryMiddleware {
     fn call(&self, ctx: Context, next: &dyn Fn(Context) -> Response) -> Response {
         use std::panic::AssertUnwindSafe;
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            next(ctx)
-        }));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| next(ctx)));
 
         match result {
             Ok(response) => response,
@@ -101,13 +98,21 @@ impl Middleware for CORSMiddleware {
         let mut response = next(ctx);
 
         let origin = "*".to_string();
-        if self.allowed_origins.contains(&origin) || self.allowed_origins.contains(&"*".to_string()) {
-            response.headers.push(("Access-Control-Allow-Origin".to_string(), origin));
-            response.headers.push(("Access-Control-Allow-Methods".to_string(), self.allowed_methods.join(", ")));
-            response.headers.push(("Access-Control-Allow-Headers".to_string(), self.allowed_headers.join(", ")));
+        if self.allowed_origins.contains(&origin) || self.allowed_origins.contains(&"*".to_string())
+        {
+            response
+                .headers
+                .push(("Access-Control-Allow-Origin".to_string(), origin));
+            response.headers.push((
+                "Access-Control-Allow-Methods".to_string(),
+                self.allowed_methods.join(", "),
+            ));
+            response.headers.push((
+                "Access-Control-Allow-Headers".to_string(),
+                self.allowed_headers.join(", "),
+            ));
         }
 
         response
     }
 }
-

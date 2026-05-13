@@ -1,9 +1,9 @@
+use crate::error::Error;
+use crate::pool::{PoolStats, SharedPool};
+use crate::Method;
+use grorm::ConnectionPool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use grorm::ConnectionPool;
-use crate::Method;
-use crate::pool::{SharedPool, PoolStats};
-use crate::error::Error;
 
 /// 请求上下文
 #[derive(Clone)]
@@ -52,10 +52,10 @@ impl Context {
     }
 
     pub fn get_db(&self) -> std::result::Result<grorm::pool::PoolConnection, Error> {
-        self.db_pool.get().map_err(|e| Error::database_with_source("Failed to get database connection".to_string(), e))
+        self.db_pool.get().map_err(|e| {
+            Error::database_with_source("Failed to get database connection".to_string(), e)
+        })
     }
-
-
 
     pub fn pool_stats(&self) -> Option<PoolStats> {
         self.pool.as_ref().map(|p| p.stats())
@@ -73,7 +73,9 @@ impl Context {
         String::from_utf8_lossy(&self.body).to_string()
     }
 
-    pub fn body_json<T: serde::de::DeserializeOwned>(&self) -> std::result::Result<T, serde_json::Error> {
+    pub fn body_json<T: serde::de::DeserializeOwned>(
+        &self,
+    ) -> std::result::Result<T, serde_json::Error> {
         serde_json::from_slice(&self.body)
     }
 

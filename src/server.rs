@@ -1,23 +1,34 @@
-use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use crate::{
+    AppConfig, ConnectionPool, LoggingConfig, Method, Response, Router, ServerConfig, SharedPool,
+    WebSocket,
+};
+use env_logger::Builder;
 use gorust::{go, runtime};
 use grorm::ConnectionPool as dbConnectionPool;
-use log::{info, error};
-use crate::{Router, Response, Method, ServerConfig, WebSocket, ConnectionPool, SharedPool};
+use log::LevelFilter;
+use log::{error, info};
+use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 pub struct Server {
-    config: ServerConfig,
+    config: AppConfig,
     router: Arc<Router>,
     pool: SharedPool,
 }
 
 impl Server {
-    pub fn new(config: ServerConfig, mut router: Router) -> Self {
-        let pool = Arc::new(ConnectionPool::new(config.max_connections));
+    pub fn new(app_config: AppConfig, mut router: Router) -> Self {
+        // 初始化日志（必须在运行时启动之前）
+        init_logging(&app_config.logging);
+
+        let config = app_config;
+        let config_server = &config.server;
+        let pool = Arc::new(ConnectionPool::new(config_server.max_connections));
         router.set_pool(pool.clone());
         Self {
             config,
@@ -37,14 +48,14 @@ impl Server {
 
     #[runtime]
     pub fn run(self) -> std::io::Result<()> {
-        let addr = self.config.addr();
+        let addr = self.config.server.addr();
         let listener = TcpListener::bind(&addr)?;
 
         info!("Server listening on {}", addr);
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_flag = shutdown.clone();
-        let shutdown_addr = self.config.addr();
+        let shutdown_addr = self.config.server.addr();
 
         std::thread::spawn(move || {
             while gorust::scheduler::Scheduler::is_running() {
@@ -61,7 +72,7 @@ impl Server {
         });
 
         let router = self.router.clone();
-        let config = Arc::new(self.config);
+        let config = Arc::new(self.config.server);
         let pool = self.pool.clone();
 
         for stream in listener.incoming() {
@@ -99,8 +110,21 @@ impl Server {
     }
 }
 
+fn parse_level(level: &str) -> LevelFilter {
+    match level.to_lowercase().as_str() {
+        "trace" => LevelFilter::Trace,
+        "debug" => LevelFilter::Debug,
+        "info" => LevelFilter::Info,
+        "warn" => LevelFilter::Warn,
+        "error" => LevelFilter::Error,
+        "off" => LevelFilter::Off,
+        _ => LevelFilter::Info,
+    }
+}
+
 fn send_503_and_close(mut stream: TcpStream) -> std::io::Result<()> {
-    let response = b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    let response =
+        b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     stream.write_all(response)?;
     stream.flush()
 }
@@ -120,7 +144,9 @@ fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConf
         match stream.read(&mut buffer) {
             Ok(0) => return,
             Ok(n) => {
-                if let Some((method, path, body, _header_end, req_keep_alive, headers)) = parse_http_request(&buffer[..n]) {
+                if let Some((method, path, body, _header_end, req_keep_alive, headers)) =
+                    parse_http_request(&buffer[..n])
+                {
                     if is_websocket_upgrade(&method, &headers) {
                         if let Some(ws_handler) = router.find_ws(&path) {
                             if let Some(key) = headers.get("Sec-WebSocket-Key") {
@@ -158,29 +184,34 @@ fn is_websocket_upgrade(method: &Method, headers: &HashMap<String, String>) -> b
     if *method != Method::GET {
         return false;
     }
-    let upgrade = headers.get("Upgrade")
+    let upgrade = headers
+        .get("Upgrade")
         .map(|v| v.to_lowercase() == "websocket")
         .unwrap_or(false);
-    let connection = headers.get("Connection")
+    let connection = headers
+        .get("Connection")
         .map(|v| v.to_lowercase().contains("upgrade"))
         .unwrap_or(false);
     let has_key = headers.contains_key("Sec-WebSocket-Key");
-    let version = headers.get("Sec-WebSocket-Version")
+    let version = headers
+        .get("Sec-WebSocket-Version")
         .map(|v| v == "13")
         .unwrap_or(false);
 
     upgrade && connection && has_key && version
 }
 
-fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize, bool, HashMap<String, String>)> {
+fn parse_http_request(
+    buffer: &[u8],
+) -> Option<(Method, String, &[u8], usize, bool, HashMap<String, String>)> {
     let header_end = find_headers_end(buffer)?;
 
     let request_line_end = memchr::memchr(b'\n', buffer)?;
     let request_line = &buffer[..request_line_end];
 
     let first_space = memchr::memchr(b' ', request_line)?;
-    let second_space = memchr::memchr(b' ', &request_line[first_space + 1..])
-        .map(|p| first_space + 1 + p)?;
+    let second_space =
+        memchr::memchr(b' ', &request_line[first_space + 1..]).map(|p| first_space + 1 + p)?;
 
     let method_bytes = &request_line[..first_space];
     let path_bytes = &request_line[first_space + 1..second_space];
@@ -221,7 +252,10 @@ fn parse_http_request(buffer: &[u8]) -> Option<(Method, String, &[u8], usize, bo
 }
 
 fn find_headers_end(buffer: &[u8]) -> Option<usize> {
-    buffer.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4)
+    buffer
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|p| p + 4)
 }
 
 fn parse_headers(headers_slice: &[u8]) -> HashMap<String, String> {
@@ -267,9 +301,7 @@ fn has_header_value(headers: &[u8], name: &[u8], value: &[u8]) -> bool {
 
         if let Some(colon) = memchr::memchr(b':', line) {
             let header_name = &line[..colon];
-            if header_name.len() == name.len()
-                && header_name.to_ascii_lowercase() == name_lower
-            {
+            if header_name.len() == name.len() && header_name.to_ascii_lowercase() == name_lower {
                 let header_value = &line[colon + 1..];
                 let header_value = header_value.trim_ascii();
                 if header_value.to_ascii_lowercase() == value.to_ascii_lowercase() {
@@ -308,9 +340,12 @@ fn format_response_fast(response: &Response, keep_alive: bool) -> Vec<u8> {
     };
 
     let mut total_len = status_line.len()
-        + cl_header.len() + content_length_str.len() + cl_suffix.len()
+        + cl_header.len()
+        + content_length_str.len()
+        + cl_suffix.len()
         + connection.len()
-        + body_len + 2;
+        + body_len
+        + 2;
 
     for (k, v) in &response.headers {
         total_len += k.len() + v.len() + 4;
@@ -338,4 +373,35 @@ fn format_response_fast(response: &Response, keep_alive: bool) -> Vec<u8> {
     }
 
     result
+}
+
+/// 初始化日志配置
+fn init_logging(log_config: &LoggingConfig) {
+    let mut builder = Builder::new();
+
+    // 设置全局级别
+    let global_level = parse_level(&log_config.level);
+    builder.filter_level(global_level);
+
+    // 配置日志输出目标
+    match log_config.output.as_str() {
+        "file" => {
+            if let Some(ref log_file) = log_config.file {
+                let file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(log_file)
+                    .expect("Failed to open log file");
+                builder.target(env_logger::Target::Pipe(Box::new(file)));
+            } else {
+                eprintln!("Warning: log output is set to 'file' but no file path specified, falling back to console");
+            }
+        }
+        _ => {
+            // 默认输出到控制台（stderr）
+            builder.target(env_logger::Target::Stderr);
+        }
+    }
+
+    builder.init();
 }
