@@ -1,14 +1,15 @@
 use crate::{
     AppConfig, ConnectionPool, Method, Response, Router, ServerConfig, SharedPool,
-    WebSocket,
+    WebSocket, LoggingConfig,
 };
 use gorust::{go, runtime};
 use grorm::ConnectionPool as dbConnectionPool;
+use grlog::{LoggerBuilder, Target};
 use log::{error, info};
 use std::collections::HashMap;
-use crate::grlog;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -21,8 +22,8 @@ pub struct Server {
 
 impl Server {
     pub fn new(app_config: AppConfig, mut router: Router) -> Self {
-        // 初始化日志（必须在运行时启动之前）
-        grlog::init_logging(&app_config.logging);
+        let log_config = &app_config.logging;
+        init_logger_level(log_config);
 
         let config = app_config;
         let config_server = &config.server;
@@ -362,4 +363,33 @@ fn format_response_fast(response: &Response, keep_alive: bool) -> Vec<u8> {
     }
 
     result
+}
+
+
+fn init_logger_level(log_config: &LoggingConfig) {
+    let level = match log_config.level.to_lowercase().as_str() {
+            "trace" => log::LevelFilter::Trace,
+            "debug" => log::LevelFilter::Debug,
+            "info" => log::LevelFilter::Info,
+            "warn" => log::LevelFilter::Warn,
+            "error" => log::LevelFilter::Error,
+            "off" => log::LevelFilter::Off,
+            _ => log::LevelFilter::Info,
+        };
+
+        let target = match log_config.output.to_lowercase().as_str() {
+            "file" => {
+                if let Some(ref file_path) = log_config.file {
+                    Target::File(PathBuf::from(file_path))
+                } else {
+                    Target::Stderr
+                }
+            }
+            "stdout" => Target::Stdout,
+            _ => Target::Stderr,
+        };
+
+        let mut builder = LoggerBuilder::new();
+        builder.filter_level(level).target(target);
+        builder.try_init();
 }

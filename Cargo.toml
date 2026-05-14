@@ -1,6 +1,6 @@
 [package]
 name = "grweb"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["lijun <1489573464@qq.com>"]
 description = "A high-performance Rust Web framework based on gorust coroutine runtime"
@@ -16,8 +16,8 @@ categories = ["web-programming", "asynchronous"]
 #gorust = "0.1.5"
 gorust = { path="../gorust" }
 grorm = { path = "../grorm" }
+grlog = { path = "../grlog" }
 log = "0.4"
-env_logger = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 num_cpus = "1.0"
