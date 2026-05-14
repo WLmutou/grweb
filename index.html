@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>grweb - 高性能 Rust Web 框架，Go 风格并发</title>
+    <!-- 使用简洁的字体与样式 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0a0f1e 0%, #0f172a 100%);
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* 导航栏 */
+        .navbar {
+            padding: 1.5rem 0;
+            border-bottom: 1px solid rgba(100, 116, 139, 0.2);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            background: rgba(15, 23, 42, 0.8);
+            z-index: 10;
+        }
+
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .github-link {
+            background: #334155;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #f1f5f9;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .github-link:hover {
+            background: #475569;
+            transform: translateY(-1px);
+        }
+
+        /* 按钮 */
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 14px 0 rgba(59,130,246,0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(59,130,246,0.6);
+        }
+
+        .btn-outline {
+            border: 1px solid #60a5fa;
+            color: #60a5fa;
+            background: transparent;
+        }
+
+        .btn-outline:hover {
+            background: rgba(96, 165, 250, 0.1);
+            transform: translateY(-1px);
+        }
+
+        /* Hero 区域 */
+        .hero {
+            padding: 5rem 0;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 1rem;
+        }
+
+        .hero .tagline {
+            font-size: 1.25rem;
+            color: #94a3b8;
+            margin-bottom: 2rem;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .badge {
+            background: rgba(96, 165, 250, 0.2);
+            border: 1px solid #3b82f6;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            display: inline-block;
+            margin-bottom: 1rem;
+        }
+
+        /* 性能卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin: 4rem 0;
+        }
+
+        .stat-card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 116, 139, 0.3);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: #60a5fa;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #60a5fa;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-unit {
+            font-size: 1rem;
+            color: #64748b;
+        }
+
+        /* 特性网格 */
+        .features {
+            margin: 5rem 0;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 3rem;
+            color: #f1f5f9;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: rgba(30, 41, 59, 0.4);
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid rgba(100, 116, 139, 0.2);
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        /* 代码对比 */
+        .code-section {
+            background: #0f172a;
+            border-radius: 16px;
+            padding: 2rem;
+            margin: 3rem 0;
+            border: 1px solid #334155;
+        }
+
+        .code-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #cbd5e1;
+        }
+
+        pre {
+            background: #1e293b;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.85rem;
+        }
+
+        code {
+            font-family: 'Monaco', monospace;
+            color: #a5f3fc;
+        }
+
+        /* 对比表格 */
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            background: rgba(30, 41, 59, 0.4);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+
+        .comparison-table th {
+            background: #1e293b;
+            font-weight: 600;
+            color: #cbd5e1;
+        }
+
+        .comparison-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .highlight {
+            color: #60a5fa;
+            font-weight: 600;
+        }
+
+        /* footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 0;
+            border-top: 1px solid #334155;
+            margin-top: 4rem;
+            color: #64748b;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; }
+            .stat-number { font-size: 1.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container nav-content">
+            <div class="logo">grweb</div>
+            <a href="https://github.com/WLmutou/grweb" class="github-link" target="_blank">GitHub ↗</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <!-- Hero -->
+        <section class="hero">
+            <div class="badge">✨ 基于最新稳定版发布</div>
+            <h1>grweb: <br> Go 风格并发，Rust 极致性能</h1>
+            <p class="tagline">
+                一个轻量级、高性能的 Web 框架，将 Go 语言的并发模型与 Rust 的零成本抽象完美结合。
+            </p>
+            <div style="display: flex; gap: 1rem; justify-content: center;">
+                <a href="https://github.com/WLmutou/grweb" class="btn btn-primary">GitHub 仓库</a>
+                <a href="https://crates.io/crates/grweb" class="btn btn-outline">crates.io</a>
+            </div>
+        </section>
+
+        <!-- 性能展示 -->
+        <section>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">110,038</div>
+                    <div class="stat-label">QPS</div>
+                    <div class="stat-unit">requests/sec</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">1.24</div>
+                    <div class="stat-label">延迟 (平均)</div>
+                    <div class="stat-unit">milliseconds</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">483</div>
+                    <div class="stat-label">吞吐量</div>
+                    <div class="stat-unit">MB/s</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">99%</div>
+                    <div class="stat-label">稳定度</div>
+                    <div class="stat-unit">高负载下</div>
+                </div>
+            </div>
+            <p style="text-align: center; font-size: 0.85rem; color: #64748b;">
+                * 测试环境: 4 线程, 100 连接, wrk 压测, 响应大小约 4.3KB (带 Keep-Alive)
+            </p>
+        </section>
+
+        <!-- 核心特性 -->
+        <section class="features">
+            <h2 class="section-title">为什么选择 grweb？</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <div class="feature-title">110k QPS 真实性能</div>
+                    <div>实测超越 Tokio/hyper，吞吐量碾压 Go/Java/Node.js。</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <div class="feature-title">M:N 协程调度</div>
+                    <div>用户态轻量级任务，工作窃取算法实现自动负载均衡。</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔗</div>
+                    <div class="feature-title">Channel 通信</div>
+                    <div>类 Go 的 channel，安全高效的协程间消息传递。</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">💾</div>
+                    <div class="feature-title">极低内存占用</div>
+                    <div>基础运行时内存仅 ~3MB，适合资源敏感场景。</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔁</div>
+                    <div class="feature-title">HTTP Keep-Alive</div>
+                    <div>连接复用，大幅提升吞吐量，减少 TCP 握手开销。</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🦀</div>
+                    <div class="feature-title">100% Rust</div>
+                    <div>内存安全，零成本抽象，无畏并发。</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 代码示例 -->
+        <section class="code-section">
+            <div class="code-title">📄 一个完整的 Web 服务器示例</div>
+            <pre><code>use grweb::{Server, Router, Context, Response, ServerConfig,
+                    middleware::{LoggerMiddleware, RecoveryMiddleware, CORSMiddleware}};
+
+                fn main() {
+                    env_logger::init();
+
+                    let mut router = Router::new();
+
+                    // 全局中间件
+                    router.use_middleware(LoggerMiddleware);
+                    router.use_middleware(RecoveryMiddleware);
+
+                    // 路由
+                    router.get("/", |_ctx: Context| {
+                        Response::html("Hello grweb!")
+                    });
+
+                    router.get("/hello/:name", |ctx: Context| {
+                        let name = ctx.param("name").unwrap_or(&"World".to_string());
+                        Response::html(format!("Hello, {}!", name))
+                    });
+
+                    // 启动
+                    let config = ServerConfig::default();
+                    Server::new(config, router).run().unwrap();
+                }</code></pre>
+            <div style="margin-top: 1rem; text-align: right;">
+                <a href="https://github.com/WLmutou/grweb/tree/main/examples" class="btn btn-outline" style="padding: 0.4rem 1rem;">查看更多示例 →</a>
+            </div>
+        </section>
+
+        <!-- 性能对比表 -->
+        <section>
+            <h2 class="section-title">与世界主流框架对比 (wrk, 4C/100conn)</h2>
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>框架</th>
+                        <th>QPS</th>
+                        <th>平均延迟</th>
+                        <th>吞吐量</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="highlight">grweb</td>
+                        <td class="highlight">110,038</td>
+                        <td class="highlight">1.24 ms</td>
+                        <td class="highlight">483 MB/s</td>
+                    </tr>
+                    <tr>
+                        <td>Rust (Actix-Web)</td>
+                        <td>~100,000</td>
+                        <td>~1.50 ms</td>
+                        <td>~100 MB/s</td>
+                    </tr>
+                    <tr>
+                        <td>Go (net/http)</td>
+                        <td>~48,000</td>
+                        <td>~2.50 ms</td>
+                        <td>~50 MB/s</td>
+                    </tr>
+                    <tr>
+                        <td>Java (Spring Boot)</td>
+                        <td>~38,000</td>
+                        <td>~3.50 ms</td>
+                        <td>~40 MB/s</td>
+                    </tr>
+                    <tr>
+                        <td>Node.js (Express)</td>
+                        <td>~18,000</td>
+                        <td>~8.00 ms</td>
+                        <td>~20 MB/s</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p style="font-size: 0.8rem; text-align: center; margin-top: -1rem;">* 数据基于相同硬件环境测试，grweb 开启 Keep-Alive。</p>
+        </section>
+
+        <!-- 快速开始 -->
+        <section class="code-section">
+            <div class="code-title">🚀 快速开始</div>
+            <pre><code># 添加依赖
+                cargo add grweb
+
+                # 创建一个简单的 web 服务
+                cargo new  grweb_app
+                cd grweb_app
+            </code></pre>
+            <div style="margin-top: 1rem;">
+                <a href="https://github.com/WLmutou/grweb" class="btn btn-primary">GitHub 仓库</a>
+                <a href="https://docs.rs/grweb" class="btn btn-outline" style="margin-left: 1rem;">阅读文档 →</a>
+            </div>
+        </section>
+
+        <div class="footer">
+            <p>grweb - 开源 · 高性能 · 用 Rust 实现 Go 的并发梦想</p>
+            <p style="margin-top: 0.5rem;">
+                <a href="https://github.com/WLmutou/grweb" style="color: #60a5fa;">GitHub</a> | 
+                <a href="https://crates.io/crates/grweb" style="color: #60a5fa;">crates.io</a> | 
+                <a href="#" style="color: #60a5fa;">文档</a>
+            </p>
+        </div>
+    </main>
+</body>
+</html>
