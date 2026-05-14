@@ -1,18 +1,16 @@
 use crate::{
-    AppConfig, ConnectionPool, LoggingConfig, Method, Response, Router, ServerConfig, SharedPool,
+    AppConfig, ConnectionPool, Method, Response, Router, ServerConfig, SharedPool,
     WebSocket,
 };
-use env_logger::Builder;
 use gorust::{go, runtime};
 use grorm::ConnectionPool as dbConnectionPool;
-use log::LevelFilter;
 use log::{error, info};
 use std::collections::HashMap;
-use std::fs::OpenOptions;
+use crate::grlog;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 pub struct Server {
@@ -24,7 +22,7 @@ pub struct Server {
 impl Server {
     pub fn new(app_config: AppConfig, mut router: Router) -> Self {
         // 初始化日志（必须在运行时启动之前）
-        init_logging(&app_config.logging);
+        grlog::init_logging(&app_config.logging);
 
         let config = app_config;
         let config_server = &config.server;
@@ -51,7 +49,8 @@ impl Server {
         let addr = self.config.server.addr();
         let listener = TcpListener::bind(&addr)?;
 
-        info!("Server listening on {}", addr);
+        let addr_for_log = addr.clone();
+        go(move || {println!("Server listening on {}", addr_for_log)});
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_flag = shutdown.clone();
@@ -110,17 +109,7 @@ impl Server {
     }
 }
 
-fn parse_level(level: &str) -> LevelFilter {
-    match level.to_lowercase().as_str() {
-        "trace" => LevelFilter::Trace,
-        "debug" => LevelFilter::Debug,
-        "info" => LevelFilter::Info,
-        "warn" => LevelFilter::Warn,
-        "error" => LevelFilter::Error,
-        "off" => LevelFilter::Off,
-        _ => LevelFilter::Info,
-    }
-}
+
 
 fn send_503_and_close(mut stream: TcpStream) -> std::io::Result<()> {
     let response =
@@ -373,35 +362,4 @@ fn format_response_fast(response: &Response, keep_alive: bool) -> Vec<u8> {
     }
 
     result
-}
-
-/// 初始化日志配置
-fn init_logging(log_config: &LoggingConfig) {
-    let mut builder = Builder::new();
-
-    // 设置全局级别
-    let global_level = parse_level(&log_config.level);
-    builder.filter_level(global_level);
-
-    // 配置日志输出目标
-    match log_config.output.as_str() {
-        "file" => {
-            if let Some(ref log_file) = log_config.file {
-                let file = OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(log_file)
-                    .expect("Failed to open log file");
-                builder.target(env_logger::Target::Pipe(Box::new(file)));
-            } else {
-                eprintln!("Warning: log output is set to 'file' but no file path specified, falling back to console");
-            }
-        }
-        _ => {
-            // 默认输出到控制台（stderr）
-            builder.target(env_logger::Target::Stderr);
-        }
-    }
-
-    builder.init();
 }

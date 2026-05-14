@@ -10,6 +10,7 @@ pub mod router;
 pub mod server;
 pub mod static_files;
 pub mod websocket;
+pub mod grlog;
 
 pub use config::{AppConfig, CorsConfig, LoggingConfig, ServerConfig};
 pub use context::Context;
@@ -19,6 +20,8 @@ pub use pool::{ConnectionPool, PoolStats, SharedPool};
 pub use router::Router;
 pub use server::Server;
 pub use websocket::{Message, WebSocket};
+pub use grlog::init_logging;
+
 
 /// HTTP 方法枚举
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
