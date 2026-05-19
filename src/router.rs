@@ -3,7 +3,7 @@ use crate::{
     Context, Error, Method, Middleware, MiddlewareChain, PoolStats, Response, SharedPool, WebSocket,
 };
 use grorm::ConnectionPool;
-use log::debug;
+use grlog::debug;
 use std::collections::HashMap;
 use std::sync::Arc;
 

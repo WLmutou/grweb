@@ -4,8 +4,8 @@ use crate::{
 };
 use gorust::{go, runtime};
 use grorm::ConnectionPool as dbConnectionPool;
-use grlog::{LoggerBuilder, Target};
-use log::{error, info};
+use grlog::{LoggerBuilder, Target, LevelFilter};
+use grlog::{error, info};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -368,13 +368,13 @@ fn format_response_fast(response: &Response, keep_alive: bool) -> Vec<u8> {
 
 fn init_logger_level(log_config: &LoggingConfig) {
     let level = match log_config.level.to_lowercase().as_str() {
-            "trace" => log::LevelFilter::Trace,
-            "debug" => log::LevelFilter::Debug,
-            "info" => log::LevelFilter::Info,
-            "warn" => log::LevelFilter::Warn,
-            "error" => log::LevelFilter::Error,
-            "off" => log::LevelFilter::Off,
-            _ => log::LevelFilter::Info,
+            "trace" => LevelFilter::Trace,
+            "debug" => LevelFilter::Debug,
+            "info" => LevelFilter::Info,
+            "warn" => LevelFilter::Warn,
+            "error" => LevelFilter::Error,
+            "off" => LevelFilter::Off,
+            _ => LevelFilter::Info,
         };
 
         let target = match log_config.output.to_lowercase().as_str() {

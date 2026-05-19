@@ -1,5 +1,6 @@
 use crate::router::Handler;
 use crate::{Context, Response};
+use grlog::{info, error};
 use std::sync::Arc;
 
 pub trait Middleware: Send + Sync {
@@ -40,12 +41,12 @@ impl Middleware for LoggerMiddleware {
         let start = std::time::Instant::now();
         let method = ctx.method.as_str().to_string();
         let path = ctx.path.clone();
-        log::info!("--> {} {}", method, path);
+        info!("--> {} {}", method, path);
 
         let response = next(ctx);
 
         let duration = start.elapsed();
-        log::info!(
+        info!(
             "<-- {} {} ({}ms)",
             response.status,
             method,
@@ -66,7 +67,7 @@ impl Middleware for RecoveryMiddleware {
         match result {
             Ok(response) => response,
             Err(err) => {
-                log::error!("Panic recovered: {:?}", err);
+                error!("Panic recovered: {:?}", err);
                 crate::error::Error::internal("Internal server error occurred").to_response()
             }
         }

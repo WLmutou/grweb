@@ -227,9 +227,9 @@ dependencies = [
 
 [[package]]
 name = "gorust"
-version = "0.1.6"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ef1e120056fa6f8a00d108360ff955c23e4a77a34029f92ab804d8aef421ae5"
+checksum = "2e2f7be41548a010ae70194f92adeeff9b12db8cb15cefeb21465cd1d9de79d0"
 dependencies = [
  "ctrlc",
  "env_logger",
@@ -243,13 +243,10 @@ dependencies = [
 
 [[package]]
 name = "grlog"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73dd66843f1e8a7998ed35f00d65a5ce0af7e568949895925586b0f5e2a5a675"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "gorust",
- "log",
 ]
 
 [[package]]
@@ -288,7 +285,6 @@ dependencies = [
  "grlog",
  "grorm",
  "itoa",
- "log",
  "memchr",
  "num_cpus",
  "serde",

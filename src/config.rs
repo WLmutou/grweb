@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
+use grlog::warn;
 
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
@@ -145,7 +146,7 @@ impl AppConfig {
             let config: AppConfig = toml::from_str(&content)?;
             Ok(config)
         } else {
-            log::warn!("Config file '{}' not found, using defaults", path);
+            warn!("Config file '{}' not found, using defaults", path);
             Ok(AppConfig::default())
         }
     }
