@@ -8,6 +8,7 @@ pub mod middleware;
 pub mod pool;
 pub mod router;
 pub mod server;
+pub mod session;
 pub mod static_files;
 pub mod websocket;
 
@@ -18,6 +19,7 @@ pub use middleware::{Middleware, MiddlewareChain};
 pub use pool::{ConnectionPool, PoolStats, SharedPool};
 pub use router::Router;
 pub use server::Server;
+pub use session::Session;
 pub use websocket::{Message, WebSocket};
 
 
@@ -112,6 +114,19 @@ impl Response {
         let mut resp = Self::new(200, body);
         resp.headers = vec![("Content-Type".to_string(), "text/html".to_string())];
         resp
+    }
+
+    pub fn from_bytes(body: Vec<u8>) -> Self {
+        Self {
+            status: 200,
+            headers: vec![],
+            body,
+        }
+    }
+
+    pub fn header(mut self, key: &str, value: &str) -> Self {
+        self.headers.push((key.to_string(), value.to_string()));
+        self
     }
 
     pub fn not_found() -> Self {

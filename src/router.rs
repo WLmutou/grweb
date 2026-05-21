@@ -106,6 +106,200 @@ impl RouterNode {
     }
 }
 
+/// 路由分组
+pub struct RouterGroup<'a> {
+    router: &'a mut Router,
+    prefix: String,
+    middlewares: Vec<Arc<dyn Middleware>>,
+}
+
+impl<'a> RouterGroup<'a> {
+    fn new(router: &'a mut Router, prefix: &str) -> Self {
+        Self {
+            router,
+            prefix: prefix.trim_end_matches('/').to_string(),
+            middlewares: Vec::new(),
+        }
+    }
+
+    pub fn use_middleware<M: Middleware + 'static>(&mut self, middleware: M) -> &mut Self {
+        self.middlewares.push(Arc::new(middleware));
+        self
+    }
+
+    fn full_path(&self, path: &str) -> String {
+        if path.is_empty() {
+            self.prefix.clone()
+        } else {
+            format!("{}/{}", self.prefix, path.trim_start_matches('/'))
+        }
+    }
+
+    pub fn add_route<F>(&mut self, method: Method, path: &str, handler: F)
+    where
+        F: Fn(Context) -> Response + Send + Sync + 'static,
+    {
+        let full_path = self.full_path(path);
+        let handler: Handler = Arc::new(handler);
+        let middlewares = self.middlewares.clone();
+        
+        debug!("Adding route: {} {}", method.as_str(), full_path);
+        
+        let final_handler: Handler = if middlewares.is_empty() {
+            handler
+        } else {
+            Arc::new(move |ctx| {
+                MiddlewareChain::process(&middlewares, &handler, ctx)
+            })
+        };
+        
+        self.router.root.insert(method, &full_path, final_handler);
+    }
+
+    pub fn get<F, R>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> R + Send + Sync + 'static,
+        R: Into<Response>,
+    {
+        self.add_route(Method::GET, path, move |ctx| handler(ctx).into());
+    }
+
+    pub fn post<F, R>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> R + Send + Sync + 'static,
+        R: Into<Response>,
+    {
+        self.add_route(Method::POST, path, move |ctx| handler(ctx).into());
+    }
+
+    pub fn put<F, R>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> R + Send + Sync + 'static,
+        R: Into<Response>,
+    {
+        self.add_route(Method::PUT, path, move |ctx| handler(ctx).into());
+    }
+
+    pub fn delete<F, R>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> R + Send + Sync + 'static,
+        R: Into<Response>,
+    {
+        self.add_route(Method::DELETE, path, move |ctx| handler(ctx).into());
+    }
+
+    pub fn get_result<F>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> Result<Response, Error> + Send + Sync + 'static,
+    {
+        let full_path = self.full_path(path);
+        let handler: ResultHandler = Arc::new(handler);
+        let middlewares = self.middlewares.clone();
+        
+        debug!("Adding route: GET {}", full_path);
+        
+        let wrapped: Handler = Arc::new(move |ctx| match handler(ctx) {
+            Ok(resp) => resp,
+            Err(err) => err.to_response(),
+        });
+        
+        let final_handler: Handler = if middlewares.is_empty() {
+            wrapped
+        } else {
+            Arc::new(move |ctx| {
+                MiddlewareChain::process(&middlewares, &wrapped, ctx)
+            })
+        };
+        
+        self.router.root.insert(Method::GET, &full_path, final_handler);
+    }
+
+    pub fn post_result<F>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> Result<Response, Error> + Send + Sync + 'static,
+    {
+        let full_path = self.full_path(path);
+        let handler: ResultHandler = Arc::new(handler);
+        let middlewares = self.middlewares.clone();
+        
+        debug!("Adding route: POST {}", full_path);
+        
+        let wrapped: Handler = Arc::new(move |ctx| match handler(ctx) {
+            Ok(resp) => resp,
+            Err(err) => err.to_response(),
+        });
+        
+        let final_handler: Handler = if middlewares.is_empty() {
+            wrapped
+        } else {
+            Arc::new(move |ctx| {
+                MiddlewareChain::process(&middlewares, &wrapped, ctx)
+            })
+        };
+        
+        self.router.root.insert(Method::POST, &full_path, final_handler);
+    }
+
+    pub fn put_result<F>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> Result<Response, Error> + Send + Sync + 'static,
+    {
+        let full_path = self.full_path(path);
+        let handler: ResultHandler = Arc::new(handler);
+        let middlewares = self.middlewares.clone();
+        
+        debug!("Adding route: PUT {}", full_path);
+        
+        let wrapped: Handler = Arc::new(move |ctx| match handler(ctx) {
+            Ok(resp) => resp,
+            Err(err) => err.to_response(),
+        });
+        
+        let final_handler: Handler = if middlewares.is_empty() {
+            wrapped
+        } else {
+            Arc::new(move |ctx| {
+                MiddlewareChain::process(&middlewares, &wrapped, ctx)
+            })
+        };
+        
+        self.router.root.insert(Method::PUT, &full_path, final_handler);
+    }
+
+    pub fn delete_result<F>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> Result<Response, Error> + Send + Sync + 'static,
+    {
+        let full_path = self.full_path(path);
+        let handler: ResultHandler = Arc::new(handler);
+        let middlewares = self.middlewares.clone();
+        
+        debug!("Adding route: DELETE {}", full_path);
+        
+        let wrapped: Handler = Arc::new(move |ctx| match handler(ctx) {
+            Ok(resp) => resp,
+            Err(err) => err.to_response(),
+        });
+        
+        let final_handler: Handler = if middlewares.is_empty() {
+            wrapped
+        } else {
+            Arc::new(move |ctx| {
+                MiddlewareChain::process(&middlewares, &wrapped, ctx)
+            })
+        };
+        
+        self.router.root.insert(Method::DELETE, &full_path, final_handler);
+    }
+
+    pub fn group(&mut self, prefix: &str) -> RouterGroup<'_> {
+        let full_prefix = self.full_path(prefix);
+        let mut group = RouterGroup::new(self.router, &full_prefix);
+        group.middlewares = self.middlewares.clone();
+        group
+    }
+}
+
 /// 路由器
 pub struct Router {
     root: RouterNode,
@@ -157,6 +351,10 @@ impl Router {
 
     pub fn use_middleware<M: Middleware + 'static>(&mut self, middleware: M) {
         Arc::make_mut(&mut self.global_middlewares).push(Arc::new(middleware));
+    }
+
+    pub fn group(&mut self, prefix: &str) -> RouterGroup<'_> {
+        RouterGroup::new(self, prefix)
     }
 
     pub fn add_route<F>(&mut self, method: Method, path: &str, handler: F)

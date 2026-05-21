@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::pool::{PoolStats, SharedPool};
+use crate::session::{self, Session};
 use crate::Method;
 use grorm::ConnectionPool;
 use std::collections::HashMap;
@@ -98,6 +99,10 @@ impl Context {
         } else {
             HashMap::new()
         }
+    }
+
+    pub fn session(&self) -> Session {
+        session::get_session_from_headers(&self.headers)
     }
 }
 
