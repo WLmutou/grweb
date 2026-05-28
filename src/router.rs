@@ -292,6 +292,78 @@ impl<'a> RouterGroup<'a> {
         self.router.root.insert(Method::DELETE, &full_path, final_handler);
     }
 
+    pub fn patch<F, R>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> R + Send + Sync + 'static,
+        R: Into<Response>,
+    {
+        self.add_route(Method::PATCH, path, move |ctx| handler(ctx).into());
+    }
+
+    pub fn options<F, R>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> R + Send + Sync + 'static,
+        R: Into<Response>,
+    {
+        self.add_route(Method::OPTIONS, path, move |ctx| handler(ctx).into());
+    }
+
+    pub fn head<F, R>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> R + Send + Sync + 'static,
+        R: Into<Response>,
+    {
+        self.add_route(Method::HEAD, path, move |ctx| handler(ctx).into());
+    }
+
+    pub fn patch_result<F>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> Result<Response, Error> + Send + Sync + 'static,
+    {
+        let full_path = self.full_path(path);
+        let handler: ResultHandler = Arc::new(handler);
+        let middlewares = self.middlewares.clone();
+        
+        debug!("Adding route: PATCH {}", full_path);
+        
+        let wrapped: Handler = Arc::new(move |ctx| match handler(ctx) {
+            Ok(resp) => resp,
+            Err(err) => err.to_response(),
+        });
+        
+        let final_handler: Handler = if middlewares.is_empty() {
+            wrapped
+        } else {
+            Arc::new(move |ctx| {
+                MiddlewareChain::process(&middlewares, &wrapped, ctx)
+            })
+        };
+        
+        self.router.root.insert(Method::PATCH, &full_path, final_handler);
+    }
+
+    pub fn any<F>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(Context) -> Response + Send + Sync + 'static + Clone,
+    {
+        let methods = [Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::PATCH, Method::HEAD, Method::OPTIONS];
+        for method in methods {
+            self.add_route(method, path, handler.clone());
+        }
+    }
+
+    pub fn websocket<F>(&mut self, path: &str, handler: F)
+    where
+        F: Fn(WebSocket) + Send + Sync + 'static,
+    {
+        let full_path = self.full_path(path);
+        self.router.ws_routes.insert(full_path, Arc::new(handler));
+    }
+
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
     pub fn group(&mut self, prefix: &str) -> RouterGroup<'_> {
         let full_prefix = self.full_path(prefix);
         let mut group = RouterGroup::new(self.router, &full_prefix);

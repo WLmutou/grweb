@@ -23,7 +23,7 @@ pub struct Server {
 impl Server {
     pub fn new(app_config: AppConfig, mut router: Router) -> Self {
         let log_config = &app_config.logging;
-        init_logger_level(log_config);
+        init_logger(log_config);
 
         let config = app_config;
         let config_server = &config.server;
@@ -45,10 +45,20 @@ impl Server {
         &self.pool
     }
 
-    #[runtime]
     pub fn run(self) -> std::io::Result<()> {
+        gorust::Runtime::init();
+        
         let addr = self.config.server.addr();
-        let listener = TcpListener::bind(&addr)?;
+        let listener = match TcpListener::bind(&addr) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("Error: Failed to bind to {}: {}", addr, e);
+                if e.kind() == std::io::ErrorKind::AddrInUse {
+                    eprintln!("Hint: Port {} is already in use. Please stop the existing process or use a different port.", addr);
+                }
+                return Err(e);
+            }
+        };
 
         let addr_for_log = addr.clone();
         go(move || {println!("Server listening on {}", addr_for_log)});
@@ -155,12 +165,18 @@ fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConf
                     } else {
                         body.to_vec()
                     };
+                    grlog::debug!("handle_connection: calling router.handle_request for {} {}", method.as_str(), path);
                     let response = router.handle_request(method, path, req_data, headers);
+                    grlog::debug!("Generated response with status: {}, body length: {}", response.status, response.body.len());
                     let response_bytes = format_response_fast(&response, keep_alive);
+                    grlog::debug!("Formatted response to {} bytes", response_bytes.len());
                     if stream.write_all(&response_bytes).is_err() {
+                        grlog::error!("Failed to write response to stream");
                         return;
                     }
+                    grlog::debug!("Wrote response to stream, flushing...");
                     let _ = stream.flush();
+                    grlog::debug!("Stream flushed");
                 } else {
                     return;
                 }
@@ -219,6 +235,7 @@ fn parse_http_request(
     };
 
     let path = String::from_utf8_lossy(path_bytes).to_string();
+    let path = path.split('?').next().unwrap_or(&path).to_string();
     let body = if header_end < buffer.len() {
         &buffer[header_end..]
     } else {
@@ -366,7 +383,7 @@ fn format_response_fast(response: &Response, keep_alive: bool) -> Vec<u8> {
 }
 
 
-fn init_logger_level(log_config: &LoggingConfig) {
+pub fn init_logger(log_config: &LoggingConfig) {
     let level = match log_config.level.to_lowercase().as_str() {
             "trace" => LevelFilter::Trace,
             "debug" => LevelFilter::Debug,

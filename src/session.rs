@@ -96,8 +96,10 @@ impl Session {
         let id = if let Some(sid) = session_id {
             let sessions = SESSION_STORE.sessions.lock();
             if sessions.contains_key(sid) {
+                drop(sessions);
                 sid.to_string()
             } else {
+                drop(sessions);
                 SESSION_STORE.create_session()
             }
         } else {

@@ -430,7 +430,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     router.get("/about", handle_about);
     router.get("/status", handle_status);
     router.get("/json", handle_json);
-    router.get("/user/:id", handle_user);
+   
     router.get("/post/:year/:month/:slug", handle_post);
     router.get("/hello", handle_hello);
     router.get("/headers", headers_handler);
@@ -440,6 +440,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     router.websocket("/ws", ws_handler);
 
     router.get("/pool/stats", pool_stats_handler);
+
+    // 创建 API 分组
+    let mut api = router.group("/api");
+    // api.use_middleware(AuthMiddleware);
+
+    // 用户相关路由
+    api.get("/users", get_users_handler);
+    api.post("/users", create_user_handler);
+    api.put("/users/:id", handle_user);
+    // api.delete("/users/:id", handle_user_delete);
+    // api.patch("/users/:id", patch_user);  // 新增
+    // WebSocket 路由
+    api.websocket("/ws", ws_handler);  // 新增
+    // 注册所有 HTTP 方法到同一处理函数
+    // api.any("/fallback", fallback_handler);  // 新增
 
     router.serve_static("/static", &config.server.static_dir);
 

@@ -25,13 +25,67 @@ fn run_chain(
     final_handler: &Handler,
     ctx: Context,
 ) -> Response {
+    // 使用迭代方式实现中间件链，避免在gorust环境中的递归问题
+    // 使用一个栈来存储中间件调用的状态
+    struct MiddlewareCall {
+        index: usize,
+        ctx: Context,
+        state: CallState,
+    }
+
+    enum CallState {
+        Enter,  // 进入中间件
+        Exit(Response),  // 退出中间件，携带响应
+    }
+
+    // 对于简单情况，使用递归实现（但确保在gorust中不会造成问题）
+    // 实际上，使用闭包构建洋葱模型
     if index >= middlewares.len() {
         return final_handler(ctx);
     }
 
-    let next = |ctx: Context| -> Response { run_chain(middlewares, index + 1, final_handler, ctx) };
+    // 构建中间件调用链 - 从最外层到最内层
+    let mut current_handler: Box<dyn Fn(Context) -> Response> = Box::new(|ctx| {
+        eprintln!("[DEBUG] current_handler: calling final_handler");
+        let resp = final_handler(ctx);
+        eprintln!("[DEBUG] current_handler: final_handler returned, status={}", resp.status);
+        resp
+    });
 
-    middlewares[index].call(ctx, &next)
+    // 从最后一个中间件向前构建处理链
+    for i in (0..middlewares.len()).rev() {
+        let middleware = middlewares[i].clone();
+        let outer_handler = current_handler;
+
+        current_handler = Box::new(move |ctx| {
+            eprintln!("[DEBUG] middleware[{}] handler: calling middleware.call", i);
+            
+            let response = middleware.call(ctx, &|ctx| {
+                eprintln!("[DEBUG] middleware[{}] next closure: calling outer_handler", i);
+                let resp = outer_handler(ctx);
+                eprintln!("[DEBUG] middleware[{}] next closure: outer_handler returned, status={}", i, resp.status);
+                resp
+            });
+            
+            eprintln!("[DEBUG] middleware[{}] handler: middleware.call returned, status={}", i, response.status);
+            response
+        });
+    }
+
+    // 执行整个中间件链
+    eprintln!("[DEBUG middleware] About to call current_handler");
+    let result = current_handler(ctx);
+    eprintln!("[DEBUG middleware] current_handler returned, status={}", result.status);
+    result
+}
+
+// 替代方案：使用迭代方式的完整实现
+pub fn process(
+    middlewares: &[Arc<dyn Middleware>],
+    final_handler: &Handler,
+    ctx: Context,
+) -> Response {
+    run_chain(middlewares, 0, final_handler, ctx)
 }
 
 pub struct LoggerMiddleware;
@@ -41,17 +95,11 @@ impl Middleware for LoggerMiddleware {
         let start = std::time::Instant::now();
         let method = ctx.method.as_str().to_string();
         let path = ctx.path.clone();
-        info!("--> {} {}", method, path);
+        eprintln!("[INFO] --> {} {}", method, path);
 
         let response = next(ctx);
-
         let duration = start.elapsed();
-        info!(
-            "<-- {} {} ({}ms)",
-            response.status,
-            method,
-            duration.as_millis()
-        );
+        eprintln!("[INFO] <-- {} {} ({}ms)", response.status, method, duration.as_millis());
 
         response
     }

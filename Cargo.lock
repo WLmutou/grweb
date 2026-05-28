@@ -265,15 +265,13 @@ dependencies = [
 [[package]]
 name = "grorm"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c677913046bdd3d67b3e5acc3979aac379e1544b0f8a113d6cd3732ec413a5fb"
 dependencies = [
  "byteorder",
  "gorust",
+ "grlog",
  "grorm-macros",
  "hex",
  "lazy_static",
- "log",
  "md-5",
  "parking_lot",
  "serde",

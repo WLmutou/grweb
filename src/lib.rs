@@ -49,8 +49,10 @@ impl Method {
     }
 }
 
+
+
 /// HTTP 响应
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,
@@ -69,30 +71,44 @@ impl Response {
         }
     }
 
-    // 接受任何可序列化的类型
-    pub fn json<T: Serialize>(data: T) -> Self {
-        let body = serde_json::to_vec(&data).unwrap_or_else(|_| {
-            json!({"error": "Failed to serialize JSON"})
-                .to_string()
-                .into_bytes()
-        });
 
-        Self {
+    pub fn json<T: Serialize + std::fmt::Debug>(data: T) -> Self {
+        let body = match serde_json::to_vec(&data) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                eprintln!("[ERROR] Failed to serialize JSON: {}", e);
+                serde_json::to_vec(&json!({"error": "Failed to serialize JSON", "details": e.to_string()}))
+                    .unwrap_or_else(|_| b"{}".to_vec())
+            }
+        };
+        
+        eprintln!("[DEBUG] After serde_json::to_vec, body len = {}", body.len());
+        
+        let resp = Self {
             status: 200,
             headers: vec![(
                 "Content-Type".to_string(),
                 "application/json;charset=utf-8".to_string(),
             )],
             body,
-        }
+        };
+        eprintln!("[DEBUG] Response object constructed");
+        resp
     }
-    // 带状态码的 JSON 响应
-    pub fn json_with_status<T: Serialize>(status: u16, data: T) -> Self {
-        let body = serde_json::to_vec(&data).unwrap_or_else(|_| {
-            json!({"error": "Failed to serialize JSON"})
-                .to_string()
-                .into_bytes()
-        });
+
+    pub fn json_with_status<T: Serialize + std::fmt::Debug>(status: u16, data: T) -> Self {
+        grlog::debug!("Attempting to serialize data with status {}: {:?}", status, data);
+        let body = match serde_json::to_vec(&data) {
+            Ok(bytes) => {
+                grlog::debug!("Successfully serialized data to {} bytes", bytes.len());
+                bytes
+            },
+            Err(e) => {
+                grlog::error!("Failed to serialize JSON with status {}: {}, data: {:?}", status, e, data);
+                serde_json::to_vec(&json!({"error": "Failed to serialize JSON", "details": e.to_string()}))
+                    .unwrap_or_else(|_| b"{}".to_vec())
+            }
+        };
 
         Self {
             status,
@@ -135,6 +151,46 @@ impl Response {
 
     pub fn internal_error() -> Self {
         Self::new(500, "500 Internal Server Error")
+    }
+
+    pub fn ok() -> Self {
+        Self::new(200, "OK")
+    }
+
+    pub fn bad_request(message: &str) -> Self {
+        Self::json_str(message)
+    }
+
+    pub fn unauthorized(message: &str) -> Self {
+        Self::json_str(message)
+    }
+
+    pub fn forbidden(message: &str) -> Self {
+        Self::json_str(message)
+    }
+
+    pub fn redirect(location: &str) -> Self {
+        Self {
+            status: 302,
+            headers: vec![("Location".to_string(), location.to_string())],
+            body: Vec::new(),
+        }
+    }
+
+    pub fn with_status(mut self, status: u16) -> Self {
+        self.status = status;
+        self
+    }
+
+    pub fn content_type(mut self, content_type: &str) -> Self {
+        self.headers.retain(|(k, _)| k != "Content-Type");
+        self.headers
+            .push(("Content-Type".to_string(), content_type.to_string()));
+        self
+    }
+
+    pub fn body_len(&self) -> usize {
+        self.body.len()
     }
 }
 

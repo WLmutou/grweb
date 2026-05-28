@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use grlog::warn;
+use crate::server::init_logger;
 
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
@@ -141,14 +142,18 @@ impl ServerConfig {
 impl AppConfig {
     pub fn load(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let config_path = Path::new(path);
-        if config_path.exists() {
+        let config = if config_path.exists() {
             let content = fs::read_to_string(config_path)?;
-            let config: AppConfig = toml::from_str(&content)?;
-            Ok(config)
+            toml::from_str(&content)?
         } else {
             warn!("Config file '{}' not found, using defaults", path);
-            Ok(AppConfig::default())
-        }
+            AppConfig::default()
+        };
+        
+        // 自动初始化日志
+        init_logger(&config.logging);
+        
+        Ok(config)
     }
 }
 
