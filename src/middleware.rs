@@ -1,6 +1,6 @@
 use crate::router::Handler;
 use crate::{Context, Response};
-use grlog::{info, error};
+use grlog::{info, error, debug};
 use std::sync::Arc;
 
 pub trait Middleware: Send + Sync {
@@ -46,9 +46,9 @@ fn run_chain(
 
     // 构建中间件调用链 - 从最外层到最内层
     let mut current_handler: Box<dyn Fn(Context) -> Response> = Box::new(|ctx| {
-        eprintln!("[DEBUG] current_handler: calling final_handler");
+        debug!("Middleware chain: calling final handler");
         let resp = final_handler(ctx);
-        eprintln!("[DEBUG] current_handler: final_handler returned, status={}", resp.status);
+        debug!("Middleware chain: final handler returned, status={}", resp.status);
         resp
     });
 
@@ -58,24 +58,24 @@ fn run_chain(
         let outer_handler = current_handler;
 
         current_handler = Box::new(move |ctx| {
-            eprintln!("[DEBUG] middleware[{}] handler: calling middleware.call", i);
+            debug!("Middleware chain: executing middleware at index: {}", i);
             
             let response = middleware.call(ctx, &|ctx| {
-                eprintln!("[DEBUG] middleware[{}] next closure: calling outer_handler", i);
+                debug!("Middleware chain: middleware[{}] next closure: calling outer_handler", i);
                 let resp = outer_handler(ctx);
-                eprintln!("[DEBUG] middleware[{}] next closure: outer_handler returned, status={}", i, resp.status);
+                debug!("Middleware chain: middleware[{}] next closure: outer_handler returned, status={}", i, resp.status);
                 resp
             });
             
-            eprintln!("[DEBUG] middleware[{}] handler: middleware.call returned, status={}", i, response.status);
+            debug!("Middleware chain: middleware[{}] handler: middleware.call returned, status={}", i, response.status);
             response
         });
     }
 
     // 执行整个中间件链
-    eprintln!("[DEBUG middleware] About to call current_handler");
+    debug!("Middleware chain: executing full chain");
     let result = current_handler(ctx);
-    eprintln!("[DEBUG middleware] current_handler returned, status={}", result.status);
+    debug!("Middleware chain: full chain completed, status={}", result.status);
     result
 }
 
@@ -95,11 +95,16 @@ impl Middleware for LoggerMiddleware {
         let start = std::time::Instant::now();
         let method = ctx.method.as_str().to_string();
         let path = ctx.path.clone();
-        eprintln!("[INFO] --> {} {}", method, path);
+        info!("--> {} {}", method, path);
 
         let response = next(ctx);
         let duration = start.elapsed();
-        eprintln!("[INFO] <-- {} {} ({}ms)", response.status, method, duration.as_millis());
+        info!(
+            "<-- {} {} ({}ms)",
+            response.status,
+            method,
+            duration.as_millis()
+        );
 
         response
     }

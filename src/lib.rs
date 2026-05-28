@@ -76,13 +76,11 @@ impl Response {
         let body = match serde_json::to_vec(&data) {
             Ok(bytes) => bytes,
             Err(e) => {
-                eprintln!("[ERROR] Failed to serialize JSON: {}", e);
+                grlog::error!("Failed to serialize JSON: {}", e);
                 serde_json::to_vec(&json!({"error": "Failed to serialize JSON", "details": e.to_string()}))
                     .unwrap_or_else(|_| b"{}".to_vec())
             }
         };
-        
-        eprintln!("[DEBUG] After serde_json::to_vec, body len = {}", body.len());
         
         let resp = Self {
             status: 200,
@@ -92,7 +90,6 @@ impl Response {
             )],
             body,
         };
-        eprintln!("[DEBUG] Response object constructed");
         resp
     }
 
