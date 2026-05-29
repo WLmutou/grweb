@@ -17,6 +17,8 @@ pub struct AppConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct ServerConfig {
+    #[serde(default = "default_db_type")]
+    pub db_type: String,
     #[serde(default = "default_host")]
     pub host: String,
     #[serde(default = "default_port")]
@@ -87,6 +89,7 @@ impl Default for AppConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
+            db_type: default_db_type(),
             host: default_host(),
             port: default_port(),
             worker_pool_size: default_worker_pool_size(),
@@ -157,6 +160,9 @@ impl AppConfig {
     }
 }
 
+fn default_db_type() -> String {
+    "sqlite".to_string()
+}
 fn default_host() -> String {
     "127.0.0.1".to_string()
 }
