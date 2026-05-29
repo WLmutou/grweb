@@ -146,7 +146,7 @@ fn get_users_handler(ctx: Context) -> Result<Response, Error> {
     // ctx.get_db_pool()?;
     let mut conn = ctx.get_db_pool().get()?;
     let mut db = QueryBuilder::<ResUser>::new(conn.driver_mut());
-    let users = db.find_all()?;
+    let users = db.find()?;
     Ok(Response::json(users))
 }
 

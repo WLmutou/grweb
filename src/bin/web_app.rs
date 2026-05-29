@@ -143,7 +143,7 @@ fn create_user_handler(ctx: Context) -> Result<Response, Error> {
 fn get_users_handler(ctx: Context) -> Result<Response, Error> {
     let mut conn = ctx.get_db()?;
     let mut db = QueryBuilder::<ResUser>::new(conn.driver_mut());
-    let users = db.find_all()?;
+    let users = db.find()?;
     Ok(Response::json(users))
 }
 
