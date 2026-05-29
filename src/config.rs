@@ -17,8 +17,6 @@ pub struct AppConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct ServerConfig {
-    #[serde(default = "default_db_type")]
-    pub db_type: String,
     #[serde(default = "default_host")]
     pub host: String,
     #[serde(default = "default_port")]
@@ -41,6 +39,8 @@ pub struct ServerConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct DatabaseConfig {
+    #[serde(default = "default_db_type")]
+    pub db_type: String,
     #[serde(default = "default_host")]
     pub host: String,
     #[serde(default = "default_port")]
@@ -89,7 +89,6 @@ impl Default for AppConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            db_type: default_db_type(),
             host: default_host(),
             port: default_port(),
             worker_pool_size: default_worker_pool_size(),
@@ -106,6 +105,7 @@ impl Default for ServerConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
+            db_type: default_db_type(),
             host: default_host(),
             port: default_port(),
             username: default_username(),
