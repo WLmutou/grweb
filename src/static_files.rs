@@ -1,4 +1,5 @@
 use crate::Response;
+use grlog::{debug, error};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -40,15 +41,22 @@ pub fn serve_file(root_dir: &str, url_path: &str) -> Response {
     let relative_path = url_path.trim_start_matches('/');
 
     let file_path = PathBuf::from(root_dir).join(relative_path);
+    
+    debug!("Serving static file: root_dir={}, url_path={}, file_path={:?}", 
+           root_dir, url_path, file_path);
 
     let canonical_root = match fs::canonicalize(root_dir) {
         Ok(p) => p,
-        Err(_) => return Response::internal_error(),
+        Err(e) => {
+            error!("Failed to canonicalize root_dir '{}': {}", root_dir, e);
+            return Response::internal_error();
+        }
     };
 
     let canonical_path = match fs::canonicalize(&file_path) {
         Ok(p) => p,
-        Err(_) => {
+        Err(e) => {
+            debug!("Failed to canonicalize file '{}': {}", file_path.display(), e);
             let index_path = file_path.join("index.html");
             match fs::canonicalize(&index_path) {
                 Ok(p) => p,
@@ -58,6 +66,7 @@ pub fn serve_file(root_dir: &str, url_path: &str) -> Response {
     };
 
     if !canonical_path.starts_with(&canonical_root) {
+        error!("Path traversal attempt: {:?}", canonical_path);
         return Response::not_found();
     }
 
@@ -82,10 +91,14 @@ pub fn serve_file(root_dir: &str, url_path: &str) -> Response {
     match fs::read(&canonical_path) {
         Ok(data) => {
             let mime = get_mime_type(canonical_path.to_str().unwrap_or(""));
+            debug!("Served file: {:?}, size: {}, mime: {}", canonical_path, data.len(), mime);
             let mut resp = Response::new(200, data);
             resp.headers = vec![("Content-Type".to_string(), mime.to_string())];
             resp
         }
-        Err(_) => Response::not_found(),
+        Err(e) => {
+            error!("Failed to read file '{:?}': {}", canonical_path, e);
+            Response::not_found()
+        }
     }
 }

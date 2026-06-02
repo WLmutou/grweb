@@ -1,7 +1,10 @@
 use serde::Deserialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::env;
+use std::sync::Arc;
 use grlog::warn;
+use grorm::{ConnectionConfig, ConnectionPool, SqliteDriverFactory, MysqlDriverFactory, PostgresDriverFactory};
 use crate::server::init_logger;
 
 #[derive(Debug, Deserialize)]
@@ -238,4 +241,96 @@ fn default_allowed_methods() -> Vec<String> {
 
 fn default_allowed_headers() -> Vec<String> {
     vec!["Content-Type".to_string()]
+}
+
+/// 解析路径：支持相对于可执行文件所在目录的路径
+/// 
+/// # 参数
+/// - `path`: 要解析的路径（可以是绝对路径或相对路径）
+/// 
+/// # 返回
+/// - 如果是绝对路径，直接返回
+/// - 如果是相对路径，优先尝试相对于可执行文件所在目录解析
+/// - 如果相对于可执行文件目录不存在，则返回原始相对路径
+/// 
+/// # 示例
+/// ```rust
+/// use grweb::resolve_path;
+/// 
+/// // 绝对路径直接返回
+/// let resolved = resolve_path("/opt/app/static");
+/// 
+/// // 相对路径会尝试相对于可执行文件目录解析
+/// let resolved = resolve_path("templates/dist/assets");
+/// ```
+pub fn resolve_path(path: &str) -> String {
+    let p = PathBuf::from(path);
+    if p.is_absolute() {
+        return path.to_string();
+    }
+    
+    // 尝试获取可执行文件所在目录
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let resolved = exe_dir.join(path);
+            if resolved.exists() {
+                return resolved.to_string_lossy().to_string();
+            }
+        }
+    }
+    
+    // 回退到原始相对路径
+    path.to_string()
+}
+
+/// 根据配置创建数据库连接池
+/// 
+/// # 参数
+/// - `config`: 数据库配置
+/// 
+/// # 返回
+/// - 数据库连接池的 Arc 包装
+/// 
+/// # 示例
+/// ```rust
+/// use grweb::{AppConfig, create_db_pool};
+/// 
+/// let config = AppConfig::load("config.toml").expect("Failed to load config");
+/// let pool = create_db_pool(&config.database);
+/// ```
+pub fn create_db_pool(config: &DatabaseConfig) -> Arc<ConnectionPool> {
+    if config.db_type == "sqlite" {
+        let dbconfig = ConnectionConfig::sqlite(&config.database);
+        return Arc::new(ConnectionPool::new(
+            SqliteDriverFactory,
+            dbconfig,
+            config.max_size,
+        ));
+    } else if config.db_type == "mysql" {
+        let dbconfig = ConnectionConfig::mysql(
+            &config.host,
+            config.port,
+            &config.database,
+            &config.username,
+            &config.password,
+        );
+        return Arc::new(ConnectionPool::new(
+            MysqlDriverFactory,
+            dbconfig,
+            config.max_size,
+        ));
+    } else {
+        let dbconfig = ConnectionConfig::postgres(
+            &config.host,
+            config.port,
+            &config.database,
+            &config.username,
+            &config.password,
+        );
+        return Arc::new(ConnectionPool::new(
+            PostgresDriverFactory,
+            dbconfig,
+            config.max_size,
+        ))
+    }
 }

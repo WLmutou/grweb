@@ -239,6 +239,20 @@ dependencies = [
 [[package]]
 name = "gorust"
 version = "0.1.8"
+dependencies = [
+ "ctrlc",
+ "env_logger",
+ "go-macros",
+ "lazy_static",
+ "log",
+ "mio",
+ "num_cpus",
+ "parking_lot",
+]
+
+[[package]]
+name = "gorust"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e2f7be41548a010ae70194f92adeeff9b12db8cb15cefeb21465cd1d9de79d0"
 dependencies = [
@@ -259,7 +273,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e2de200b3b312724009c15e0b5ae4dcde9150699e72e124ea90a6ed7188f229"
 dependencies = [
  "chrono",
- "gorust",
+ "gorust 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -267,7 +281,7 @@ name = "grorm"
 version = "0.1.2"
 dependencies = [
  "byteorder",
- "gorust",
+ "gorust 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "grlog",
  "grorm-macros",
  "hex",
@@ -292,7 +306,7 @@ dependencies = [
 name = "grweb"
 version = "0.1.4"
 dependencies = [
- "gorust",
+ "gorust 0.1.8",
  "grlog",
  "grorm",
  "itoa",
