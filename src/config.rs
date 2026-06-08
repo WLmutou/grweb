@@ -214,7 +214,7 @@ fn default_database() -> String {
 }
 
 fn default_max_size() -> usize {
-    5
+    100
 }
 
 fn default_log_level() -> String {

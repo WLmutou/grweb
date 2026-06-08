@@ -1,6 +1,5 @@
 use sha1::{Digest, Sha1};
 use std::io::{Read, Write};
-use std::net::TcpStream;
 
 const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -21,12 +20,17 @@ pub enum Message {
     Pong(Vec<u8>),
 }
 
+/// Trait combining Read and Write for WebSocket stream
+pub trait ReadWrite: Read + Write {}
+impl<T: Read + Write> ReadWrite for T {}
+
 pub struct WebSocket {
-    stream: TcpStream,
+    stream: Box<dyn ReadWrite>,
 }
 
 impl WebSocket {
-    pub fn accept(mut stream: TcpStream, key: &str) -> Option<Self> {
+    pub fn accept<S: ReadWrite + 'static>(stream: S, key: &str) -> Option<Self> {
+        let mut stream = stream;
         let accept_key = compute_accept_key(key);
         let response = format!(
             "HTTP/1.1 101 Switching Protocols\r\n\
@@ -39,7 +43,7 @@ impl WebSocket {
             return None;
         }
         let _ = stream.flush();
-        Some(WebSocket { stream })
+        Some(WebSocket { stream: Box::new(stream) })
     }
 
     pub fn read_message(&mut self) -> Option<Message> {
@@ -141,7 +145,7 @@ fn base64_encode(data: &[u8]) -> String {
     result
 }
 
-fn read_frame(stream: &mut TcpStream) -> Option<(bool, u8, bool, Vec<u8>)> {
+fn read_frame<S: Read>(stream: &mut S) -> Option<(bool, u8, bool, Vec<u8>)> {
     let mut header = [0u8; 2];
     stream.read_exact(&mut header).ok()?;
 
@@ -179,7 +183,7 @@ fn read_frame(stream: &mut TcpStream) -> Option<(bool, u8, bool, Vec<u8>)> {
     Some((fin, opcode, masked, payload))
 }
 
-fn send_frame(stream: &mut TcpStream, opcode: u8, payload: &[u8]) -> bool {
+fn send_frame<S: Write>(stream: &mut S, opcode: u8, payload: &[u8]) -> bool {
     let mut frame = Vec::with_capacity(10 + payload.len());
 
     frame.push(FIN_BIT | opcode);

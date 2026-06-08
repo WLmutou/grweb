@@ -2,13 +2,13 @@ use crate::{
     AppConfig, ConnectionPool, Method, Response, Router, ServerConfig, SharedPool,
     WebSocket, LoggingConfig,
 };
-use gorust::{go, runtime};
+use gorust::{go, runtime, net::{AsyncTcpListener, AsyncTcpStream}};
 use grorm::ConnectionPool as dbConnectionPool;
 use grlog::{LoggerBuilder, Target, LevelFilter};
 use grlog::{error, info};
 use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::io::Write;
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -49,7 +49,10 @@ impl Server {
         gorust::Runtime::init();
         
         let addr = self.config.server.addr();
-        let listener = match TcpListener::bind(&addr) {
+        let socket_addr: std::net::SocketAddr = addr.parse().map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid address: {}", e))
+        })?;
+        let listener = match AsyncTcpListener::bind(socket_addr) {
             Ok(l) => l,
             Err(e) => {
                 eprintln!("Error: Failed to bind to {}: {}", addr, e);
@@ -85,18 +88,18 @@ impl Server {
         let config = Arc::new(self.config.server);
         let pool = self.pool.clone();
 
-        for stream in listener.incoming() {
+        loop {
             if shutdown.load(Ordering::SeqCst) {
                 info!("Server stopped");
                 break;
             }
-            match stream {
-                Ok(stream) => {
+            match listener.accept() {
+                Ok((stream, _)) => {
                     if shutdown.load(Ordering::SeqCst) {
                         break;
                     }
                     if !pool.try_acquire() {
-                        let _ = send_503_and_close(stream);
+                        let _ = send_503_and_close_async(stream);
                         continue;
                     }
                     let router = router.clone();
@@ -122,25 +125,22 @@ impl Server {
 
 
 
-fn send_503_and_close(mut stream: TcpStream) -> std::io::Result<()> {
+fn send_503_and_close_async(stream: AsyncTcpStream) -> std::io::Result<()> {
     let response =
         b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     stream.write_all(response)?;
-    stream.flush()
+    Ok(())
 }
 
-fn handle_connection(mut stream: TcpStream, router: &Router, config: &ServerConfig) {
+fn handle_connection(mut stream: AsyncTcpStream, router: &Router, config: &ServerConfig) {
     if config.tcp_nodelay {
         let _ = stream.set_nodelay(true);
     }
 
-    let keep_alive_timeout = Duration::from_secs(config.keep_alive_timeout);
     let mut buffer = vec![0u8; config.read_buffer_size];
     let mut keep_alive = true;
 
     while keep_alive {
-        let _ = stream.set_read_timeout(Some(keep_alive_timeout));
-
         match stream.read(&mut buffer) {
             Ok(0) => return,
             Ok(n) => {
