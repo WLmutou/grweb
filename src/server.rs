@@ -138,96 +138,82 @@ fn handle_connection(mut stream: AsyncTcpStream, router: &Router, config: &Serve
     }
 
     let mut buffer = vec![0u8; config.read_buffer_size];
-    let mut keep_alive = true;
 
-    while keep_alive {
-        match stream.read(&mut buffer) {
-            Ok(0) => return,
-            Ok(n) => {
-                if let Some((method, path, body, _header_end, req_keep_alive, headers)) =
-                    parse_http_request(&buffer[..n])
-                {
-                    if is_websocket_upgrade(&method, &headers) {
-                        if let Some(ws_handler) = router.find_ws(&path) {
-                            if let Some(key) = headers.get("Sec-WebSocket-Key") {
-                                if let Some(ws) = WebSocket::accept(stream, key) {
-                                    ws_handler(ws);
-                                }
-                                return;
+    // 一个 goroutine 只处理一个请求，处理完即返回释放 worker 线程
+    // 防止长时间占用 worker 导致其他连接无法被调度
+    match stream.read(&mut buffer) {
+        Ok(0) => return,
+        Ok(n) => {
+            if let Some((method, path, body, _header_end, _req_keep_alive, headers)) =
+                parse_http_request(&buffer[..n])
+            {
+                if is_websocket_upgrade(&method, &headers) {
+                    if let Some(ws_handler) = router.find_ws(&path) {
+                        if let Some(key) = headers.get("Sec-WebSocket-Key") {
+                            if let Some(ws) = WebSocket::accept(stream, key) {
+                                ws_handler(ws);
                             }
+                            return;
                         }
                     }
+                }
 
-                    keep_alive = req_keep_alive;
-
-                    let req_data = if body.is_empty() {
-                        Vec::new()
+                let req_data = if body.is_empty() {
+                    Vec::new()
+                } else {
+                    body.to_vec()
+                };
+                grlog::debug!("handle_connection: calling router.handle_request for {} {}", method.as_str(), path);
+                let response = router.handle_request(method, path, req_data, headers);
+                grlog::debug!("Generated response with status: {}, body length: {}", response.status, response.body.len());
+                let response_bytes = format_response_fast(&response, false);
+                grlog::debug!("Formatted response to {} bytes", response_bytes.len());
+                
+                let write_start = std::time::Instant::now();
+                
+                // 对大响应（>64KB）使用分块写入，避免阻塞
+                const LARGE_RESPONSE_THRESHOLD: usize = 64 * 1024; // 64KB
+                if response_bytes.len() > LARGE_RESPONSE_THRESHOLD {
+                    // 查找头部结束位置（\r\n\r\n 或 \n\n）
+                    let header_end = if let Some(pos) = response_bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                        pos + 4
+                    } else if let Some(pos) = response_bytes.windows(2).position(|w| w == b"\n\n") {
+                        pos + 2
                     } else {
-                        body.to_vec()
+                        response_bytes.len()
                     };
-                    grlog::debug!("handle_connection: calling router.handle_request for {} {}", method.as_str(), path);
-                    let response = router.handle_request(method, path, req_data, headers);
-                    grlog::debug!("Generated response with status: {}, body length: {}", response.status, response.body.len());
-                    let response_bytes = format_response_fast(&response, keep_alive);
-                    grlog::debug!("Formatted response to {} bytes", response_bytes.len());
                     
-                    let write_start = std::time::Instant::now();
-                    
-                    // 对大响应（>64KB）使用分块写入，避免阻塞
-                    const LARGE_RESPONSE_THRESHOLD: usize = 64 * 1024; // 64KB
-                    if response_bytes.len() > LARGE_RESPONSE_THRESHOLD {
-                        // 查找头部结束位置（\r\n\r\n 或 \n\n）
-                        let header_end = if let Some(pos) = response_bytes.windows(4).position(|w| w == b"\r\n\r\n") {
-                            pos + 4
-                        } else if let Some(pos) = response_bytes.windows(2).position(|w| w == b"\n\n") {
-                            pos + 2
-                        } else {
-                            response_bytes.len()
-                        };
-                        
-                        // 先写入头部
-                        if stream.write_all(&response_bytes[..header_end]).is_err() {
-                            grlog::error!("Failed to write response headers to stream");
-                            return;
-                        }
-                        
-                        // 分块写入主体部分
-                        let body = &response_bytes[header_end..];
-                        const CHUNK_SIZE: usize = 32 * 1024; // 32KB chunks
-                        let mut written = 0;
-                        while written < body.len() {
-                            let end = (written + CHUNK_SIZE).min(body.len());
-                            if stream.write_all(&body[written..end]).is_err() {
-                                grlog::error!("Failed to write response body to stream");
-                                return;
-                            }
-                            
-                            // 每写完一块后让出控制权，允许其他协程运行
-                            gorust::yield_now();
-                            
-                            written = end;
-                        }
-                    } else {
-                        // 小响应正常写入
-                        if stream.write_all(&response_bytes).is_err() {
-                            grlog::error!("Failed to write response to stream");
-                            return;
-                        }
+                    // 先写入头部
+                    if stream.write_all(&response_bytes[..header_end]).is_err() {
+                        grlog::error!("Failed to write response headers to stream");
+                        return;
                     }
                     
-                    let write_duration = write_start.elapsed();
-                    grlog::debug!("Wrote response to stream in {:?}", write_duration);
-                    
-                    // 仅在 keep-alive 模式下需要 flush，确保响应边界清晰
-                    if keep_alive {
-                        let _ = stream.flush();
+                    // 分块写入主体部分
+                    let body = &response_bytes[header_end..];
+                    const CHUNK_SIZE: usize = 32 * 1024; // 32KB chunks
+                    let mut written = 0;
+                    while written < body.len() {
+                        let end = (written + CHUNK_SIZE).min(body.len());
+                        if stream.write_all(&body[written..end]).is_err() {
+                            grlog::error!("Failed to write response body to stream");
+                            return;
+                        }
+                        written = end;
                     }
                 } else {
-                    return;
+                    // 小响应正常写入
+                    if stream.write_all(&response_bytes).is_err() {
+                        grlog::error!("Failed to write response to stream");
+                        return;
+                    }
                 }
+                
+                let write_duration = write_start.elapsed();
+                grlog::debug!("Wrote response to stream in {:?}", write_duration);
             }
-            Err(_) => return,
         }
+        Err(_) => return,
     }
 }
 
