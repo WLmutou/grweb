@@ -2,13 +2,12 @@ use crate::{
     AppConfig, ConnectionPool, Method, Response, Router, ServerConfig, SharedPool,
     WebSocket, LoggingConfig,
 };
-use gorust::{go, runtime, net::{AsyncTcpListener, AsyncTcpStream}};
+use gorust::{go, go_task, runtime, net::{AsyncTcpListener, AsyncTcpStream}};
 use grorm::ConnectionPool as dbConnectionPool;
 use grlog::{LoggerBuilder, Target, LevelFilter};
 use grlog::{error, info};
 use std::collections::HashMap;
-use std::io::Write;
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -105,9 +104,13 @@ impl Server {
                     let router = router.clone();
                     let config = config.clone();
                     let pool = pool.clone();
-                    go(move || {
-                        handle_connection(stream, &router, &config);
-                        pool.release();
+                    let mut task = HandleConnectionTask::new(stream, router, config.as_ref());
+                    go_task(move || -> bool {
+                        let done = task.poll();
+                        if done {
+                            pool.release();
+                        }
+                        done
                     });
                 }
                 Err(e) => {
@@ -132,88 +135,159 @@ fn send_503_and_close_async(stream: AsyncTcpStream) -> std::io::Result<()> {
     Ok(())
 }
 
-fn handle_connection(mut stream: AsyncTcpStream, router: &Router, config: &ServerConfig) {
-    if config.tcp_nodelay {
-        let _ = stream.set_nodelay(true);
+/// 状态机：处理单个 HTTP 请求，支持在 I/O 等待时让出 goroutine。
+struct HandleConnectionTask {
+    stream: Option<AsyncTcpStream>,
+    buffer: Vec<u8>,
+    read_len: usize,
+    response_bytes: Vec<u8>,
+    written: usize,
+    state: ConnectionState,
+    router: Arc<Router>,
+}
+
+enum ConnectionState {
+    /// 正在读取请求（尚未完成）
+    ReadRequest,
+    /// 已读完请求，开始处理（CPU 计算阶段，不应 yield）
+    ProcessRequest,
+    /// 正在写入响应
+    WriteResponse,
+    /// 完成
+    Done,
+}
+
+impl HandleConnectionTask {
+    fn new(stream: AsyncTcpStream, router: Arc<Router>, config: &ServerConfig) -> Self {
+        if config.tcp_nodelay {
+            let _ = stream.set_nodelay(true);
+        }
+        HandleConnectionTask {
+            stream: Some(stream),
+            buffer: vec![0u8; config.read_buffer_size],
+            read_len: 0,
+            response_bytes: Vec::new(),
+            written: 0,
+            state: ConnectionState::ReadRequest,
+            router,
+        }
     }
 
-    let mut buffer = vec![0u8; config.read_buffer_size];
-
-    // 一个 goroutine 只处理一个请求，处理完即返回释放 worker 线程
-    // 防止长时间占用 worker 导致其他连接无法被调度
-    match stream.read(&mut buffer) {
-        Ok(0) => return,
-        Ok(n) => {
-            if let Some((method, path, body, _header_end, _req_keep_alive, headers)) =
-                parse_http_request(&buffer[..n])
-            {
-                if is_websocket_upgrade(&method, &headers) {
-                    if let Some(ws_handler) = router.find_ws(&path) {
-                        if let Some(key) = headers.get("Sec-WebSocket-Key") {
-                            if let Some(ws) = WebSocket::accept(stream, key) {
-                                ws_handler(ws);
-                            }
-                            return;
+    /// 推进状态机。
+    /// 返回 `true` = 处理完成，`false` = 让出（等待 I/O）。
+    fn poll(&mut self) -> bool {
+        loop {
+            match self.state {
+                ConnectionState::ReadRequest => {
+                    let stream = match self.stream.as_ref() {
+                        Some(s) => s,
+                        None => {
+                            self.state = ConnectionState::Done;
+                            return true;
                         }
-                    }
-                }
-
-                let req_data = if body.is_empty() {
-                    Vec::new()
-                } else {
-                    body.to_vec()
-                };
-                grlog::debug!("handle_connection: calling router.handle_request for {} {}", method.as_str(), path);
-                let response = router.handle_request(method, path, req_data, headers);
-                grlog::debug!("Generated response with status: {}, body length: {}", response.status, response.body.len());
-                let response_bytes = format_response_fast(&response, false);
-                grlog::debug!("Formatted response to {} bytes", response_bytes.len());
-                
-                let write_start = std::time::Instant::now();
-                
-                // 对大响应（>64KB）使用分块写入，避免阻塞
-                const LARGE_RESPONSE_THRESHOLD: usize = 64 * 1024; // 64KB
-                if response_bytes.len() > LARGE_RESPONSE_THRESHOLD {
-                    // 查找头部结束位置（\r\n\r\n 或 \n\n）
-                    let header_end = if let Some(pos) = response_bytes.windows(4).position(|w| w == b"\r\n\r\n") {
-                        pos + 4
-                    } else if let Some(pos) = response_bytes.windows(2).position(|w| w == b"\n\n") {
-                        pos + 2
-                    } else {
-                        response_bytes.len()
                     };
-                    
-                    // 先写入头部
-                    if stream.write_all(&response_bytes[..header_end]).is_err() {
-                        grlog::error!("Failed to write response headers to stream");
-                        return;
+                    let buf_len = self.buffer.len();
+                    if self.read_len >= buf_len {
+                        // buffer 满了但还没完整请求，扩容
+                        self.buffer.resize(buf_len * 2, 0);
                     }
-                    
-                    // 分块写入主体部分
-                    let body = &response_bytes[header_end..];
-                    const CHUNK_SIZE: usize = 32 * 1024; // 32KB chunks
-                    let mut written = 0;
-                    while written < body.len() {
-                        let end = (written + CHUNK_SIZE).min(body.len());
-                        if stream.write_all(&body[written..end]).is_err() {
-                            grlog::error!("Failed to write response body to stream");
-                            return;
+                    match stream.try_read(&mut self.buffer[self.read_len..]) {
+                        Ok(0) => {
+                            self.state = ConnectionState::Done;
+                            return true;
                         }
-                        written = end;
-                    }
-                } else {
-                    // 小响应正常写入
-                    if stream.write_all(&response_bytes).is_err() {
-                        grlog::error!("Failed to write response to stream");
-                        return;
+                        Ok(n) => {
+                            self.read_len += n;
+                            self.state = ConnectionState::ProcessRequest;
+                            continue;
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            stream.wait_readable_yield();
+                            return false;
+                        }
+                        Err(_) => {
+                            self.state = ConnectionState::Done;
+                            return true;
+                        }
                     }
                 }
-                
-                let write_duration = write_start.elapsed();
-                grlog::debug!("Wrote response to stream in {:?}", write_duration);
+                ConnectionState::ProcessRequest => {
+                    match parse_http_request(&self.buffer[..self.read_len]) {
+                        Some((method, path, body, _header_end, _req_keep_alive, headers)) => {
+                            // WebSocket 升级：同步处理，转移 stream 所有权
+                            if is_websocket_upgrade(&method, &headers) {
+                                if let Some(ws_handler) = self.router.find_ws(&path) {
+                                    if let Some(key) = headers.get("Sec-WebSocket-Key") {
+                                        if let Some(stream) = self.stream.take() {
+                                            if let Some(ws) = WebSocket::accept(stream, key) {
+                                                ws_handler(ws);
+                                            }
+                                        }
+                                    }
+                                }
+                                self.state = ConnectionState::Done;
+                                return true;
+                            }
+
+                            let req_data = if body.is_empty() {
+                                Vec::new()
+                            } else {
+                                body.to_vec()
+                            };
+                            let response = self.router.handle_request(method, path, req_data, headers);
+                            self.response_bytes = format_response_fast(&response, false);
+                            grlog::debug!(
+                                "Generated response {} ({} bytes)",
+                                response.status,
+                                self.response_bytes.len()
+                            );
+                            self.state = ConnectionState::WriteResponse;
+                            self.written = 0;
+                            continue;
+                        }
+                        None => {
+                            // 请求还不完整，继续读取
+                            self.state = ConnectionState::ReadRequest;
+                            continue;
+                        }
+                    }
+                }
+                ConnectionState::WriteResponse => {
+                    if self.written >= self.response_bytes.len() {
+                        self.state = ConnectionState::Done;
+                        return true;
+                    }
+                    let stream = match self.stream.as_ref() {
+                        Some(s) => s,
+                        None => {
+                            self.state = ConnectionState::Done;
+                            return true;
+                        }
+                    };
+                    match stream.try_write(&self.response_bytes[self.written..]) {
+                        Ok(0) => {
+                            self.state = ConnectionState::Done;
+                            return true;
+                        }
+                        Ok(n) => {
+                            self.written += n;
+                            continue;
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            stream.wait_writable_yield();
+                            return false;
+                        }
+                        Err(_) => {
+                            self.state = ConnectionState::Done;
+                            return true;
+                        }
+                    }
+                }
+                ConnectionState::Done => {
+                    return true;
+                }
             }
         }
-        Err(_) => return,
     }
 }
 
