@@ -3,6 +3,7 @@ use crate::pool::{PoolStats, SharedPool};
 use crate::session::{self, Session};
 use crate::Method;
 use grorm::ConnectionPool;
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -13,6 +14,7 @@ pub struct Context {
     pub path: String,
     pub params: HashMap<String, String>,
     pub headers: HashMap<String, String>,
+    store: HashMap<String, Arc<dyn Any + Send + Sync>>,
     pub body: Vec<u8>,
     pool: Option<SharedPool>,
     /// 数据库连接池
@@ -33,6 +35,7 @@ impl Context {
             params,
             headers,
             body,
+            store: HashMap::new(),
             pool: None,
             db_pool: Arc::new(ConnectionPool::default()),
         }
@@ -60,6 +63,24 @@ impl Context {
 
     pub fn pool_stats(&self) -> Option<PoolStats> {
         self.pool.as_ref().map(|p| p.stats())
+    }
+
+    /// 存入任意类型的数据（T 必须是 Send + Sync + 'static）
+    pub fn insert<T: Send + Sync + 'static>(&mut self, key: &str, value: T) {
+        self.store.insert(key.to_string(), Arc::new(value));
+    }
+
+    /// 取出之前存入的任意类型，需要显式标注类型
+    ///
+    /// # 示例
+    /// ```ignore
+    /// ctx.insert("user_id".to_string(), 42i64);
+    /// if let Some(id) = ctx.get::<i64>("user_id") {
+    ///     println!("{}", id);
+    /// }
+    /// ```
+    pub fn get<T: Send + Sync + 'static>(&self, key: &str) -> Option<&T> {
+        self.store.get(key)?.downcast_ref::<T>()
     }
 
     pub fn param(&self, key: &str) -> Option<&String> {
