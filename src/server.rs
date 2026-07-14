@@ -213,7 +213,7 @@ impl HandleConnectionTask {
                 }
                 ConnectionState::ProcessRequest => {
                     match parse_http_request(&self.buffer[..self.read_len]) {
-                        Some((method, path, body, _header_end, _req_keep_alive, headers)) => {
+                        Some((method, path, body, _header_end, _req_keep_alive, headers, query_string)) => {
                             // WebSocket 升级：同步处理，转移 stream 所有权
                             if is_websocket_upgrade(&method, &headers) {
                                 if let Some(ws_handler) = self.router.find_ws(&path) {
@@ -234,7 +234,7 @@ impl HandleConnectionTask {
                             } else {
                                 body.to_vec()
                             };
-                            let response = self.router.handle_request(method, path, req_data, headers);
+                            let response = self.router.handle_request(method, path, req_data, headers, query_string);
                             self.response_bytes = format_response_fast(&response, false);
                             grlog::debug!(
                                 "Generated response {} ({} bytes)",
@@ -314,7 +314,15 @@ fn is_websocket_upgrade(method: &Method, headers: &HashMap<String, String>) -> b
 
 fn parse_http_request(
     buffer: &[u8],
-) -> Option<(Method, String, &[u8], usize, bool, HashMap<String, String>)> {
+) -> Option<(
+    Method,
+    String,
+    &[u8],
+    usize,
+    bool,
+    HashMap<String, String>,
+    String,
+)> {
     let header_end = find_headers_end(buffer)?;
 
     let request_line_end = memchr::memchr(b'\n', buffer)?;
@@ -340,6 +348,10 @@ fn parse_http_request(
     };
 
     let path = String::from_utf8_lossy(path_bytes).to_string();
+    let query_string = match path.split_once('?') {
+        Some((_, qs)) => qs.to_string(),
+        None => String::new(),
+    };
     let path = path.split('?').next().unwrap_or(&path).to_string();
     let body = if header_end < buffer.len() {
         &buffer[header_end..]
@@ -360,7 +372,7 @@ fn parse_http_request(
 
     let headers = parse_headers(headers_slice);
 
-    Some((method, path, body, header_end, keep_alive, headers))
+    Some((method, path, body, header_end, keep_alive, headers, query_string))
 }
 
 fn find_headers_end(buffer: &[u8]) -> Option<usize> {

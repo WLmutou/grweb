@@ -42,7 +42,7 @@ impl ResUser {
 
 fn hello_handler(ctx: Context) -> Response {
     let default_name = "World".to_string();
-    let name = ctx.param("name").unwrap_or(&default_name);
+    let name = ctx.path.rsplit('/').next().unwrap_or(&default_name);
     Response::html(format!("<h1>Hello, {}!</h1>", name))
 }
 
@@ -293,7 +293,7 @@ fn handle_status(_ctx: Context) -> Response {
 }
 
 fn handle_user(ctx: Context) -> Response {
-    let user_id = ctx.param("id").map(|s| s.as_str()).unwrap_or("unknown");
+    let user_id = ctx.path.rsplit('/').next().unwrap_or("unknown");
     // 如果没有数据库连接池，则使用原始逻辑
     let mut body = String::new();
     body.push_str(
@@ -319,9 +319,10 @@ fn handle_user(ctx: Context) -> Response {
 }
 
 fn handle_post(ctx: Context) -> Response {
-    let year = ctx.param("year").map(|s| s.as_str()).unwrap_or("unknown");
-    let month = ctx.param("month").map(|s| s.as_str()).unwrap_or("unknown");
-    let slug = ctx.param("slug").map(|s| s.as_str()).unwrap_or("unknown");
+    let parts: Vec<&str> = ctx.path.split('/').filter(|p| !p.is_empty()).collect();
+    let year = parts.get(1).copied().unwrap_or("unknown");
+    let month = parts.get(2).copied().unwrap_or("unknown");
+    let slug = parts.get(3).copied().unwrap_or("unknown");
 
     let mut body = String::new();
     body.push_str(

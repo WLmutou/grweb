@@ -244,6 +244,7 @@ dependencies = [
  "env_logger",
  "go-macros",
  "lazy_static",
+ "libc",
  "log",
  "mio",
  "num_cpus",
@@ -281,7 +282,7 @@ name = "grorm"
 version = "0.1.2"
 dependencies = [
  "byteorder",
- "gorust 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gorust 0.1.8",
  "grlog",
  "grorm-macros",
  "hex",

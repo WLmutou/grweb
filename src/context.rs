@@ -12,10 +12,10 @@ use std::sync::Arc;
 pub struct Context {
     pub method: Method,
     pub path: String,
-    pub params: HashMap<String, String>,
     pub headers: HashMap<String, String>,
     store: HashMap<String, Arc<dyn Any + Send + Sync>>,
     pub body: Vec<u8>,
+    query: HashMap<String, Vec<String>>,
     pool: Option<SharedPool>,
     /// 数据库连接池
     pub db_pool: Arc<ConnectionPool>,
@@ -25,16 +25,16 @@ impl Context {
     pub fn new(
         method: Method,
         path: String,
-        params: HashMap<String, String>,
         headers: HashMap<String, String>,
         body: Vec<u8>,
+        query: HashMap<String, Vec<String>>,
     ) -> Self {
         Self {
             method,
             path,
-            params,
             headers,
             body,
+            query,
             store: HashMap::new(),
             pool: None,
             db_pool: Arc::new(ConnectionPool::default()),
@@ -82,10 +82,7 @@ impl Context {
     pub fn get<T: Send + Sync + 'static>(&self, key: &str) -> Option<&T> {
         self.store.get(key)?.downcast_ref::<T>()
     }
-
-    pub fn param(&self, key: &str) -> Option<&String> {
-        self.params.get(key)
-    }
+    
 
     pub fn header(&self, key: &str) -> Option<&String> {
         self.headers.get(key)
@@ -95,10 +92,47 @@ impl Context {
         String::from_utf8_lossy(&self.body).to_string()
     }
 
+    /// 将 JSON Body 绑定到结构体（最推荐，结构明确）
+    ///
+    /// 对应 Gin: `c.ShouldBindJSON(&struct)`
     pub fn body_json<T: serde::de::DeserializeOwned>(
         &self,
     ) -> std::result::Result<T, serde_json::Error> {
         serde_json::from_slice(&self.body)
+    }
+
+    /// 将 JSON Body 绑定到结构体（`body_json` 的别名，与 Gin 命名对齐）
+    ///
+    /// 对应 Gin: `c.ShouldBindJSON(&struct)`
+    pub fn should_bind_json<T: serde::de::DeserializeOwned>(
+        &self,
+    ) -> std::result::Result<T, serde_json::Error> {
+        serde_json::from_slice(&self.body)
+    }
+
+    /// 将 JSON Body 绑定到动态 Map（适用于动态 JSON 结构）
+    ///
+    /// 对应 Gin: `c.ShouldBindJSON(&map)`
+    pub fn should_bind_json_map(
+        &self,
+    ) -> std::result::Result<serde_json::Map<String, serde_json::Value>, serde_json::Error> {
+        serde_json::from_slice(&self.body)
+    }
+
+    /// 将 JSON 数组 Body 绑定到结构体切片
+    ///
+    /// 对应 Gin: `c.ShouldBindJSON(&[]struct)`
+    pub fn should_bind_json_array<T: serde::de::DeserializeOwned>(
+        &self,
+    ) -> std::result::Result<Vec<T>, serde_json::Error> {
+        serde_json::from_slice(&self.body)
+    }
+
+    /// 获取原始 Body 数据（字节切片）
+    ///
+    /// 对应 Gin: `c.GetRawData()`
+    pub fn get_raw_data(&self) -> &[u8] {
+        &self.body
     }
 
     pub fn form_value(&self, key: &str) -> Option<String> {
@@ -124,6 +158,73 @@ impl Context {
 
     pub fn session(&self) -> Session {
         session::get_session_from_headers(&self.headers)
+    }
+
+    // ============== Query 参数方法 ==============
+
+    /// 获取单个查询参数值，不存在返回空字符串
+    ///
+    /// 对应 Gin: `c.Query(key)`
+    pub fn query(&self, key: &str) -> &str {
+        self.query
+            .get(key)
+            .and_then(|v| v.first())
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    }
+
+    /// 获取单个查询参数值，不存在返回默认值
+    ///
+    /// 对应 Gin: `c.DefaultQuery(key, default)`
+    pub fn default_query<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
+        self.query
+            .get(key)
+            .and_then(|v| v.first())
+            .map(|s| s.as_str())
+            .unwrap_or(default)
+    }
+
+    /// 获取单个查询参数值并判断是否存在
+    ///
+    /// 对应 Gin: `c.GetQuery(key)`
+    pub fn get_query(&self, key: &str) -> (&str, bool) {
+        match self.query.get(key).and_then(|v| v.first()) {
+            Some(v) => (v.as_str(), true),
+            None => ("", false),
+        }
+    }
+
+    /// 获取同名参数的多个值
+    ///
+    /// 对应 Gin: `c.QueryArray(key)`
+    pub fn query_array(&self, key: &str) -> &[String] {
+        self.query.get(key).map(|v| v.as_slice()).unwrap_or(&[])
+    }
+
+    /// 获取所有查询参数（只取每个 key 的第一个值）
+    ///
+    /// 对应 Gin: `c.QueryMap(key)` — 简化版，返回所有参数映射
+    pub fn query_map(&self) -> &HashMap<String, Vec<String>> {
+        &self.query
+    }
+
+    /// 将查询参数绑定到结构体（需要 serde 反序列化支持）
+    ///
+    /// 对应 Gin: `c.ShouldBindQuery(&struct)`
+    ///
+    /// 将查询参数转换为 `HashMap<String, String>`（每个 key 取第一个值），
+    /// 然后通过 serde 反序列化为目标结构体。
+    pub fn should_bind_query<T: serde::de::DeserializeOwned>(
+        &self,
+    ) -> Result<T, serde_json::Error> {
+        let map: HashMap<String, String> = self
+            .query
+            .iter()
+            .map(|(k, v)| (k.clone(), v.first().cloned().unwrap_or_default()))
+            .collect();
+        // 使用 serde_json 将 HashMap 转为 JSON 再反序列化，实现类似 Gin 的绑定效果
+        let json = serde_json::to_value(&map)?;
+        serde_json::from_value(json)
     }
 }
 
@@ -283,4 +384,31 @@ fn parse_multipart(body: &[u8], boundary: &str) -> HashMap<String, String> {
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// 解析 URL 查询字符串为 `HashMap<String, Vec<String>>`
+///
+/// 支持重复 key（如 `?a=1&a=2` → `"a" => ["1", "2"]`）
+pub fn parse_query_string(query_str: &str) -> HashMap<String, Vec<String>> {
+    let mut result = HashMap::new();
+    if query_str.is_empty() {
+        return result;
+    }
+    for pair in query_str.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let mut parts = pair.splitn(2, '=');
+        let key = parts.next().unwrap_or("");
+        let value = parts.next().unwrap_or("");
+
+        let decoded_key = String::from_utf8_lossy(&url_decode(key.as_bytes())).to_string();
+        let decoded_value = String::from_utf8_lossy(&url_decode(value.as_bytes())).to_string();
+
+        result
+            .entry(decoded_key)
+            .or_insert_with(Vec::new)
+            .push(decoded_value);
+    }
+    result
 }

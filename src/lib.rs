@@ -13,7 +13,7 @@ pub mod static_files;
 pub mod websocket;
 
 pub use config::{AppConfig, CorsConfig, LoggingConfig, ServerConfig, DatabaseConfig, resolve_path, create_db_pool};
-pub use context::Context;
+pub use context::{parse_query_string, Context};
 pub use error::{Error, ErrorResponse, Result};
 pub use middleware::{Middleware, MiddlewareChain};
 pub use pool::{ConnectionPool, PoolStats, SharedPool};

@@ -1,6 +1,7 @@
 use crate::static_files;
 use crate::{
-    Context, Error, Method, Middleware, MiddlewareChain, PoolStats, Response, SharedPool, WebSocket,
+    parse_query_string, Context, Error, Method, Middleware, MiddlewareChain, PoolStats, Response,
+    SharedPool, WebSocket,
 };
 use grorm::ConnectionPool;
 use grlog::debug;
@@ -556,6 +557,7 @@ impl Router {
         path: String,
         req_data: Vec<u8>,
         headers: HashMap<String, String>,
+        query_string: String,
     ) -> Response {
         for (prefix, dir_path) in &self.static_dirs {
             if path.starts_with(prefix)
@@ -565,8 +567,9 @@ impl Router {
             }
         }
 
-        if let Some((handler, params)) = self.root.find(&method, &path) {
-            let mut ctx = Context::new(method, path, params, headers, req_data);
+        if let Some((handler, _)) = self.root.find(&method, &path) {
+            let query = parse_query_string(&query_string);
+            let mut ctx = Context::new(method, path, headers, req_data, query);
             if let Some(ref pool) = self.pool {
                 ctx = ctx.with_pool(pool.clone());
             }
