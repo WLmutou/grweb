@@ -44,7 +44,8 @@ impl ResUser {
 
 fn hello_handler(ctx: Context) -> Response {
     let default_name = "World".to_string();
-    let name = ctx.param("name").unwrap_or(&default_name);
+    let (q_name,exist) = ctx.get_query("name");
+    let name = if exist { q_name } else { &default_name };
     Response::html(format!("<h1>Hello, {}!</h1>", name))
 }
 
@@ -296,7 +297,9 @@ fn handle_status(_ctx: Context) -> Response {
 }
 
 fn handle_user(ctx: Context) -> Response {
-    let user_id = ctx.param("id").map(|s| s.as_str()).unwrap_or("unknown");
+    let (user_id, exist) = ctx.get_query("id");
+    let user_id = if exist { user_id } else { "unknown" };
+    
     // 如果没有数据库连接池，则使用原始逻辑
     let mut body = String::new();
     body.push_str(
@@ -322,10 +325,15 @@ fn handle_user(ctx: Context) -> Response {
 }
 
 fn handle_post(ctx: Context) -> Response {
-    let year = ctx.param("year").map(|s| s.as_str()).unwrap_or("unknown");
-    let month = ctx.param("month").map(|s| s.as_str()).unwrap_or("unknown");
-    let slug = ctx.param("slug").map(|s| s.as_str()).unwrap_or("unknown");
-
+    let (year, exist) = ctx.get_query("year");
+    let year = if exist { year } else { "year" };
+    
+    let (month, exist) = ctx.get_query("month");
+    let month = if exist { month } else { "month" };
+    
+    let (slug, exist) = ctx.get_query("slug");
+    let slug = if exist { slug } else { "slug" };
+        
     let mut body = String::new();
     body.push_str(
         r#"<html>
