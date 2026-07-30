@@ -2,16 +2,14 @@ use crate::{
     AppConfig, ConnectionPool, Method, Response, Router, ServerConfig, SharedPool,
     WebSocket, LoggingConfig,
 };
-use gorust::{go, go_task, runtime, net::{AsyncTcpListener, AsyncTcpStream}};
+use gorust::{flush_go_batch, go, go_task, net::{AsyncTcpListener, AsyncTcpStream}};
 use grorm::ConnectionPool as dbConnectionPool;
 use grlog::{LoggerBuilder, Target, LevelFilter};
 use grlog::{error, info};
 use std::collections::HashMap;
-use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 pub struct Server {
     config: AppConfig,
@@ -46,7 +44,21 @@ impl Server {
 
     pub fn run(self) -> std::io::Result<()> {
         gorust::Runtime::init();
-        
+
+        // 保存主线程句柄，用于 Ctrl-C 时唤醒 accept()
+        let main_thread = std::thread::current();
+
+        // 1. 设置 Ctrl-C 信号处理器
+        let shutdown_flag = Arc::new(AtomicBool::new(false));
+        let flag_for_signal = shutdown_flag.clone();
+        let _ = ctrlc::set_handler(move || {
+            flag_for_signal.store(true, Ordering::SeqCst);
+            // 设置 accept() 关闭标志，让 accept() 返回 Interrupted 错误
+            gorust::net::shutdown_accept();
+            // 唤醒主线程（accept() 中 thread::park()），否则会一直阻塞
+            main_thread.unpark();
+        });
+
         let addr = self.config.server.addr();
         let socket_addr: std::net::SocketAddr = addr.parse().map_err(|e| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid address: {}", e))
@@ -64,37 +76,17 @@ impl Server {
 
         let addr_for_log = addr.clone();
         go(move || {println!("Server listening on {}", addr_for_log)});
-
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let shutdown_flag = shutdown.clone();
-        let shutdown_addr = self.config.server.addr();
-
-        std::thread::spawn(move || {
-            while gorust::scheduler::Scheduler::is_running() {
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            shutdown_flag.store(true, Ordering::SeqCst);
-            let addr: std::net::SocketAddr = shutdown_addr.parse().unwrap();
-            for _ in 0..10 {
-                if TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok() {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-        });
+        flush_go_batch();
 
         let router = self.router.clone();
         let config = Arc::new(self.config.server);
         let pool = self.pool.clone();
 
+        // 2. 主循环：接受连接并处理
         loop {
-            if shutdown.load(Ordering::SeqCst) {
-                info!("Server stopped");
-                break;
-            }
             match listener.accept() {
                 Ok((stream, _)) => {
-                    if shutdown.load(Ordering::SeqCst) {
+                    if shutdown_flag.load(Ordering::SeqCst) {
                         break;
                     }
                     if !pool.try_acquire() {
@@ -112,15 +104,22 @@ impl Server {
                         }
                         done
                     });
+                    // 刷新协程创建缓冲区，确保处理请求的协程被加入调度队列
+                    flush_go_batch();
                 }
                 Err(e) => {
-                    if shutdown.load(Ordering::SeqCst) {
+                    // 如果是 Ctrl-C 导致的 Interrupted 错误，直接退出
+                    if e.kind() == std::io::ErrorKind::Interrupted || shutdown_flag.load(Ordering::SeqCst) {
                         break;
                     }
                     error!("Connection failed: {}", e);
                 }
             }
         }
+
+        // 3. 关闭运行时：停止所有工作线程和定时器，所有 goroutine 退出
+        info!("Shutting down all goroutines...");
+        gorust::shutdown();
 
         Ok(())
     }

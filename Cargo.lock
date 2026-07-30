@@ -240,7 +240,6 @@ dependencies = [
 name = "gorust"
 version = "0.1.8"
 dependencies = [
- "ctrlc",
  "env_logger",
  "go-macros",
  "lazy_static",
@@ -270,6 +269,14 @@ dependencies = [
 [[package]]
 name = "grlog"
 version = "0.1.1"
+dependencies = [
+ "chrono",
+ "gorust 0.1.8",
+]
+
+[[package]]
+name = "grlog"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e2de200b3b312724009c15e0b5ae4dcde9150699e72e124ea90a6ed7188f229"
 dependencies = [
@@ -283,7 +290,7 @@ version = "0.1.2"
 dependencies = [
  "byteorder",
  "gorust 0.1.8",
- "grlog",
+ "grlog 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "grorm-macros",
  "hex",
  "lazy_static",
@@ -308,8 +315,9 @@ dependencies = [
 name = "grweb"
 version = "0.1.4"
 dependencies = [
+ "ctrlc",
  "gorust 0.1.8",
- "grlog",
+ "grlog 0.1.1",
  "grorm",
  "itoa",
  "lazy_static",
